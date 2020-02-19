@@ -7,11 +7,12 @@ from Bio.SeqFeature import FeatureLocation, SeqFeature
 from reportlab.lib import colors
 from .SMARTplex import SMARTplex
 from .multiplex import MultiplexScheme
+from .multiplex import poaMultiplexScheme
 from primal import settings
 
 logger = logging.getLogger('Primal Log')
 
-class MultiplexReporter(MultiplexScheme):
+class poaMultiplexReporter(poaMultiplexScheme):
     """Reporting methods to extend MultiplexScheme"""
 
     def write_bed(self, path='./'):
@@ -58,6 +59,14 @@ class MultiplexReporter(MultiplexScheme):
         filepath = os.path.join(path, '{}.reference.fasta'.format(self.prefix))
         with open(filepath, 'w') as refhandle:
             SeqIO.write(self.references, filepath, 'fasta')
+
+    #print("| %s | %s | %s | %s | %s | 100&micro;M |" %(left.name,left.seq,right.name,right.seq,region.pool[-1]))
+    #for alt in region.alternates:
+    #    if alt.direction == 'RIGHT':
+    #        print("| %s | %s | %s | %s | %s | 100&micro;M |" %('','', alt.name,alt.seq,region.pool[-1]))
+    #    if alt.direction == 'LEFT':
+    #        print("| %s | %s | %s | %s | %s | 100&micro;M |" %(alt.name, alt.seq,'','',region.pool[-1]))
+    #    #pprint.pprint(vars(alt))
 
     def apply_to_window(self, sequence, window_size, function, step=None):
         """Modified from https://github.com/biopython/biopython/blob/master/Tests/test_GenomeDiagram.py
