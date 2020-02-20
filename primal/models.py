@@ -74,13 +74,48 @@ class _candidatePrimer(_primer):
 
     def __init__(self, position, seq):
         super(_candidatePrimer, self).__init__(position, seq)
-        #primerCov = None
+        penalty = 0
 
     def __eq__(self, other):
         return self.seq == other.seq
 
     def __hash__(self):
         return hash(self.seq)
+
+    def calcPenalty(self):
+        #Tm high
+        if self.tm > settings.global_args['PRIMER_OPT_TM']:
+            self.penalty += settings.global_args['PRIMER_WT_TM_GT'] * (self.tm - settings.global_args['PRIMER_OPT_TM'])
+        #Tm low
+        if self.tm < settings.global_args['PRIMER_OPT_TM']:
+            self.penalty += settings.global_args['PRIMER_WT_TM_LT'] * (settings.global_args['PRIMER_OPT_TM'] - self.tm)
+        #High GC
+        if self.gc > settings.global_args['PRIMER_OPT_GC_PERCENT']:
+            self.penalty += settings.global_args['PRIMER_WT_GC_PERCENT_GT'] * (self.gc - settings.global_args['PRIMER_OPT_GC_PERCENT'])
+        #Low GC
+        if self.gc < settings.global_args['PRIMER_OPT_GC_PERCENT']:
+            self.penalty += settings.global_args['PRIMER_WT_GC_PERCENT_LT'] * (settings.global_args['PRIMER_OPT_GC_PERCENT'] - self.gc)
+        #Length high
+        if self.length > settings.global_args['PRIMER_OPT_SIZE']:
+            self.penalty += settings.global_args['PRIMER_WT_SIZE_GT'] * (self.length - settings.global_args['PRIMER_OPT_SIZE'])
+        #Length low
+        if self.length < settings.global_args['PRIMER_OPT_SIZE']:
+            self.penalty += settings.global_args['PRIMER_WT_SIZE_LT'] * (settings.global_args['PRIMER_OPT_SIZE'] - self.length)
+        #Self any
+        if (self.tm - 5) <= self.selfAny:
+            self.penalty += settings.global_args['PRIMER_WT_SELF_ANY_TH'] * (self.selfAny - (self.tm - 5 - 1))
+        elif (self.tm - 5) > self.selfAny:
+            self.penalty += settings.global_args['PRIMER_WT_SELF_ANY_TH'] * (1/(self.tm - 5 + 1 - self.selfAny))
+        #Self end
+        if (self.tm - 5) <= self.selfEnd:
+            self.penalty += settings.global_args['PRIMER_WT_SELF_END_TH'] * (self.selfEnd - (self.tm - 5 - 1))
+        elif (self.tm - 5) > self.selfAny:
+            self.penalty += settings.global_args['PRIMER_WT_SELF_END_TH'] * (1/(self.tm - 5 + 1 - self.selfEnd))
+        #Hairpin
+        if (self.tm - 5) <= self.hairpin:
+            self.penalty += settings.global_args['PRIMER_WT_HAIRPIN_TH'] * (self.hairpin - (self.tm - 5 - 1))
+        elif (self.tm - 5) > self.selfAny:
+            self.penalty += settings.global_args['PRIMER_WT_HAIRPIN_TH'] * (1/(self.tm - 5 + 1 - self.hairpin))
 
     def queryAlign(self, references):
         return [ref.id for ref in references if ref[self.startEnd('fwd')[0]:self.startEnd('fwd')[1]].seq == self.seq]

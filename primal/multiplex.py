@@ -143,43 +143,46 @@ class poaMultiplexScheme(object):
         initial_chunk_end = chunk_end
 
         # Primer3 setup
-        #p3_global_args = settings.global_args
-        #p3_seq_args = settings.seq_args
-        #p3_global_args['PRIMER_PRODUCT_SIZE_RANGE'] = [
-        #    [int(self.amplicon_length * (1 - self.max_variation / 2)), int(self.amplicon_length * (1 + self.max_variation / 2))]]
-        #p3_global_args['PRIMER_NUM_RETURN'] = self.max_candidates
+        p3_global_args = settings.global_args
+        p3_seq_args = settings.seq_args
+        p3_global_args['PRIMER_PRODUCT_SIZE_RANGE'] = [
+            [int(self.amplicon_length * (1 - self.max_variation / 2)), int(self.amplicon_length * (1 + self.max_variation / 2))]]
+        p3_global_args['PRIMER_NUM_RETURN'] = self.max_candidates
 
         # Run digestSeq until unique primers are found
         hit_left_limit = False
         while True:
             # Slice primary reference
-            logger.debug("Region %i: reference chunk %i:%i, length %i" %(region_num, chunk_start, chunk_end, chunk_end-chunk_start))
-            #p3_seq_args['SEQUENCE_TEMPLATE'] = seq
-            #p3_seq_args['SEQUENCE_INCLUDED_REGION'] = [0, len(seq) - 1]
-            #primer3_output = primer3.bindings.designPrimers(p3_seq_args, p3_global_args)
-            #pprint(primer3_output)
+            seq = str(self.primaryReference.seq[chunk_start:chunk_end])
+            p3_seq_args['SEQUENCE_TEMPLATE'] = seq
+            p3_seq_args['SEQUENCE_INCLUDED_REGION'] = [0, len(seq) - 1]
+            logger.info("Region %i: reference chunk %i:%i, length %i" %(region_num, chunk_start, chunk_end, chunk_end-chunk_start))
+            primer3_output = primer3.bindings.designPrimers(p3_seq_args, p3_global_args)
+            pprint(primer3_output)
 
             #Digest the references (except the consensus) into candidatePrimers
-
             allKmers = set()
-            for ref in self.references[1:]:
-                seq = str(ref.seq[chunk_start:chunk_end])
-                for k in range(22, 30+1):
-                    allKmers.update(self.digestSeq(k, chunk_start, seq))
+            #for ref in self.references[1:]:
+                #seq = str(ref.seq[chunk_start:chunk_end])
+            for k in range(22, 30+1):
+                allKmers.update(self.digestSeq(k, chunk_start, seq))
 
             #Filter for valid start and end position
-            fwdPos = [p for p in allKmers if p.startEnd('fwd')[0] >= chunk_start and p.startEnd('fwd')[1] <= chunk_start+40]
-            revPos = [p for p in allKmers if p.startEnd('rev')[0] <= chunk_end and p.startEnd('rev')[1] >= chunk_end-40]
+            #fwdPos = [p for p in allKmers if p.startEnd('fwd')[0] >= chunk_start and p.startEnd('fwd')[1] <= chunk_start+40]
+            #revPos = [p for p in allKmers if p.startEnd('rev')[0] <= chunk_end and p.startEnd('rev')[1] >= chunk_end-40]
+            fwdPos = [p for p in allKmers if chunk_start <= p.startEnd('fwd')[0] < chunk_start+40]
+            revPos = [p for p in allKmers if chunk_end-40 <= p.startEnd('rev')[0] < chunk_end]
 
             #Filter primers down on various key paramters
-            fwdThermo = [p for p in fwdPos if (60 <= p.tm <= 63) and (30 <= p.gc <= 55) and (p.maxPoly <= 5) and (p.hairpin('fwd') <= 50.0)]
-            revThermo = [p for p in revPos if (60 <= p.tm <= 63) and (30 <= p.gc <= 55) and (p.maxPoly <= 5) and (p.hairpin('rev') <= 50.0)]
+            fwdThermo = [p for p in fwdPos if (30 <= p.gc <= 55) and (60 <= p.tm <= 63) and (p.hairpin('fwd') <= 50.0) and (p.maxPoly <= 5)]
+            revThermo = [p for p in revPos if (30 <= p.gc <= 55) and (60 <= p.tm <= 63) and (p.hairpin('rev') <= 50.0) and (p.maxPoly <= 5)]
 
             #Filter for valid length
             pairs = [_candidatePrimerPair(f,r) for f in fwdThermo for r in revThermo if 380 <= _candidatePrimerPair(f,r).productLength <= 420]
             logger.info("Region %i: current position returned %i left and %i right candidate primers" %(region_num, len(fwdThermo), len(revThermo)))
             logger.info("Region %i: current position returned %i candidate primer pairs" %(region_num, len(pairs)))
 
+            sys.exit()
             if pairs:
                 #Sort pairs on left ref coverage, right ref coverage
                 sortPairs = sorted(pairs, key=lambda x: (len(x.left.queryAlign(self.references[1:])), len(x.right.queryAlign(self.references[1:]))), reverse=True)
