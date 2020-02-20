@@ -16,14 +16,28 @@ class _primer(object):
     def __init__(self, position, seq):
         self.position = position
         self.seq = seq
+        self.name = None
         #self.penalty = None
-        #self.refsCov = None
 
     def startEnd(self, direction):
         if direction == 'fwd':
             return (self.position, self.position + self.length)
         if direction == 'rev':
             return (self.position + self.length, self.position)
+
+    #Stability of homodimer
+    def homodimer(self, direction):
+        if direction == 'fwd':
+            return calcHomodimer(self.seq, mv_conc=50, dv_conc=1.5, dntp_conc=0.6).tm
+        if direction == 'rev':
+            return calcHomodimer(Seq(self.seq).reverse_complement()._data, mv_conc=50, dv_conc=1.5, dntp_conc=0.6).tm
+
+    #Stability of hairpin
+    def hairpin(self, direction):
+        if direction == 'fwd':
+            return calcHairpin(self.seq, mv_conc=50, dv_conc=1.5, dntp_conc=0.6).tm
+        if direction == 'rev':
+            return calcHairpin(Seq(self.seq).reverse_complement()._data, mv_conc=50, dv_conc=1.5, dntp_conc=0.6).tm
 
     #Check the thermo calculations are the same for fwd and rev
     def revComp(self):
@@ -54,18 +68,6 @@ class _primer(object):
     def length(self):
         return len(self.seq)
 
-    #Stability of homodimer
-    @property
-    def homodimer(self):
-        #Only works for fwd primers
-        return calcHomodimer(self.seq, mv_conc=50, dv_conc=1.5, dntp_conc=0.6).tm
-
-    #Stability of hairpin
-    @property
-    def hairpin(self):
-        #Only works for fwd primers
-        #revComp = str(Seq(self.seq).reverse_complement())
-        return calcHairpin(self.seq, mv_conc=50, dv_conc=1.5, dntp_conc=0.6).tm
 
 class _candidatePrimer(_primer):
     """A candidate primer for a region."""
@@ -97,8 +99,8 @@ class _candidatePrimerPair(object):
     def __init__(self, left, right):
         self.left = left
         self.right = right
-        self.leftAlts = []
-        self.rightAlts = []
+        #self.leftAlts = []
+        #self.rightAlts = []
 
     def fwdAlts(self, references, pairs, sortPairs, max_alts=5):
         #Update set of refs covered
@@ -153,7 +155,7 @@ class _region(object):
         self.revAlternates = revAlternates
 
     @property
-    def top_pair(self):
+    def topPair(self):
         return self.candidatePairs[0]
 
 

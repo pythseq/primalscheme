@@ -20,8 +20,8 @@ class poaMultiplexReporter(poaMultiplexScheme):
         filepath = os.path.join(path, '{}.scheme.bed'.format(self.prefix))
         with open(filepath, 'w') as bedhandle:
             for r in self.regions:
-                print(*map(str, [self.primary_reference.id, r.top_pair.left.start, r.top_pair.left.end, r.top_pair.left.name, r.pool]), sep='\t', file=bedhandle)
-                print(*map(str, [self.primary_reference.id, r.top_pair.right.end, r.top_pair.right.start, r.top_pair.right.name, r.pool]), sep='\t', file=bedhandle)
+                print(*map(str, [self.primaryReference.id, r.topPair.left.startEnd('fwd')[0], r.topPair.left.startEnd('fwd')[1], r.topPair.left.name, r.pool]), sep='\t', file=bedhandle)
+                print(*map(str, [self.primaryReference.id, r.topPair.right.startEnd('rev')[0], r.topPair.right.startEnd('rev')[1], r.topPair.right.name, r.pool]), sep='\t', file=bedhandle)
 
     def write_tsv(self, path='./'):
         logger.info('Writing TSV')
@@ -29,13 +29,14 @@ class poaMultiplexReporter(poaMultiplexScheme):
         with open(filepath, 'w') as tsvhandle:
             print(*['name', 'pool', 'seq', 'length', '%gc', 'tm (use 65)'], sep='\t', file=tsvhandle)
             for r in self.regions:
-                left = r.top_pair.left
-                right = r.top_pair.right
+                left = r.topPair.left
+                right = r.topPair.right
                 print(*map(str, [left.name, r.pool, left.seq, left.length, '%.2f' %left.gc, '%.2f' %left.tm]), sep='\t', file=tsvhandle)
+                for alt in r.fwdAlternates:
+                    print(*map(str, [alt.name, r.pool, alt.seq, alt.length, '%.2f' %alt.gc, '%.2f' %alt.tm]), sep='\t', file=tsvhandle)
                 print(*map(str, [right.name, r.pool, right.seq, right.length, '%.2f' %right.gc, '%.2f' %right.tm]), sep='\t', file=tsvhandle)
-                if r.alternates:
-                    for alt in r.alternates:
-                        print(*map(str, [alt.name, r.pool, alt.seq, alt.length, '%.2f' %alt.gc, '%.2f' %alt.tm]), sep='\t', file=tsvhandle)
+                for alt in r.revAlternates:
+                    print(*map(str, [alt.name, r.pool, alt.seq, alt.length, '%.2f' %alt.gc, '%.2f' %alt.tm]), sep='\t', file=tsvhandle)
 
     def write_SMARTplex(self, path='./'):
         logger.info('Writing SMARTplex')
@@ -43,10 +44,10 @@ class poaMultiplexReporter(poaMultiplexScheme):
         with open(filepath, 'w') as tsvhandle:
             print(*['name','fullseq', 'tm (use 52)', 'seq', 'subseq','lensubseq','lenmatch',], sep='\t', file=tsvhandle)
             for r in self.regions:
-                right = r.top_pair.right
+                right = r.topPair.right
                 name = '{}_{}_SMARTplex'.format(self.prefix, r.region_num)
-                RTprimer, thermo, subseq, lensubseq, lenmatch  = SMARTplex(right)
-                print(*map(str, [name, RTprimer, '%.2f' %thermo, right.seq, subseq, lensubseq, lenmatch]), sep='\t', file=tsvhandle)
+                #RTprimer, thermo, subseq, lensubseq, lenmatch  = SMARTplex(right)
+                #print(*map(str, [name, RTprimer, '%.2f' %thermo, right.seq, subseq, lensubseq, lenmatch]), sep='\t', file=tsvhandle)
 
     def write_pickle(self, path='./'):
         logger.info('Writing pickles')

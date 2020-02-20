@@ -29,7 +29,7 @@ class poaMultiplexScheme(object):
         self.run()
 
     @property
-    def primary_reference(self):
+    def primaryReference(self):
         return self.references[0]
 
     def run(self):
@@ -66,7 +66,7 @@ class poaMultiplexScheme(object):
 
             # Last region if less than one amplicon length remaining
             if prev_pair:
-                if (len(self.primary_reference) - prev_pair.right.startEnd('rev')[1]) < self.amplicon_length:
+                if (len(self.primaryReference) - prev_pair.right.startEnd('rev')[1]) < self.amplicon_length:
                     is_last_region = True
                     logger.debug('Region {}: is last region'.format(region_num))
 
@@ -104,14 +104,14 @@ class poaMultiplexScheme(object):
             logger.debug('Right length for sorted candidates: ' + ','.join(['%i' %each.right.length for each in regions[-1].candidate_pairs]))
 
             logger.debug('Totals for sorted pairs: ' + ','.join(['%.2f' %each.mean_percent_identity for each in regions[-1].candidate_pairs]))
-
+            """
             if len(regions) > 1:
             # Remember, results now include this one, so -2 is the other pool
-                trimmed_overlap = regions[-2].candidate_pairs[0].right.end - regions[-1].candidate_pairs[0].left.end - 1
-                logger.info("Region %i: highest scoring product %i:%i, length %i, trimmed overlap %i" % (region_num, regions[-1].candidate_pairs[0].left.start, regions[-1].candidate_pairs[0].right.start, regions[-1].candidate_pairs[0].product_length, trimmed_overlap))
+                trimmed_overlap = regions[-2].candidatePairs[0].right.startEnd('rev')[1] - regions[-1].candidatePairs[0].left.startEnd('fwd')[1] - 1
+                logger.info("Region %i: highest scoring product %i:%i, length %i, trimmed overlap %i" % (region_num, regions[-1].candidatePairs[0].left.startEnd('fwd')[0], regions[-1].candidatePairs[0].right.startEnd('rev')[0], regions[-1].candidatePairs[0].productLength, trimmed_overlap))
             else:
-                logger.info("Region %i: highest scoring product %i:%i, length %i" % (region_num, regions[-1].candidate_pairs[0].left.start, regions[-1].candidate_pairs[0].right.start, regions[-1].candidate_pairs[0].product_length))
-            """
+                logger.info("Region %i: highest scoring product %i:%i, length %i" % (region_num, regions[-1].candidatePairs[0].left.startEnd('fwd')[0], regions[-1].candidatePairs[0].right.startEnd('rev')[0], regions[-1].candidatePairs[0].productLength))
+
 
         # Return regions
         self.regions = regions
@@ -132,22 +132,22 @@ class poaMultiplexScheme(object):
             chunk_start = 10
             chunk_end = int((1 + self.max_variation / 2) * self.amplicon_length) + 10
         elif is_last_region:
-            # Last time work backwards
-            chunk_start = int(len(self.primary_reference) - ((1 + self.max_variation / 2) * self.amplicon_length))
-            chunk_end = len(self.primary_reference)
+            # Last region work backwards
+            chunk_start = int(len(self.primaryReference) - ((1 + self.max_variation / 2) * self.amplicon_length))
+            chunk_end = len(self.primaryReference)
         else:
-            # right limit - min overlap - diff max min product length - max primer length
+            # Start is right limit - delta min/max product length - max primer length
             chunk_start = int(left_primer_right_limit - (self.max_variation * self.amplicon_length) - settings.global_args['PRIMER_MAX_SIZE'])
             chunk_end = int(chunk_start + ((1 + self.max_variation/2) * self.amplicon_length))
         initial_chunk_start = chunk_start
         initial_chunk_end = chunk_end
 
         # Primer3 setup
-        p3_global_args = settings.global_args
-        p3_seq_args = settings.seq_args
-        p3_global_args['PRIMER_PRODUCT_SIZE_RANGE'] = [
-            [int(self.amplicon_length * (1 - self.max_variation / 2)), int(self.amplicon_length * (1 + self.max_variation / 2))]]
-        p3_global_args['PRIMER_NUM_RETURN'] = self.max_candidates
+        #p3_global_args = settings.global_args
+        #p3_seq_args = settings.seq_args
+        #p3_global_args['PRIMER_PRODUCT_SIZE_RANGE'] = [
+        #    [int(self.amplicon_length * (1 - self.max_variation / 2)), int(self.amplicon_length * (1 + self.max_variation / 2))]]
+        #p3_global_args['PRIMER_NUM_RETURN'] = self.max_candidates
 
         # Run digestSeq until unique primers are found
         hit_left_limit = False
@@ -160,6 +160,18 @@ class poaMultiplexScheme(object):
             #pprint(primer3_output)
 
             #Digest the references (except the consensus) into candidatePrimers
+
+            fwdPos = set()
+            revPos = set()
+            for ref in self.references[1:]:
+                seq = str(ref.seq[chunk_start:chunk_start+40])
+                for k in range(22, 30+1):
+                    fwdPos.update(self.digestSeq(k, chunk_start, seq))
+                seq = str(ref.seq[chunk_end-40:chunk_end])
+                for k in range(22, 30+1):
+                    revPos.update(self.digestSeq(k, chunk_end-40, seq))
+            """
+
             allKmers = set()
             for ref in self.references[1:]:
                 seq = str(ref.seq[chunk_start:chunk_end])
@@ -169,10 +181,14 @@ class poaMultiplexScheme(object):
             #Filter for valid position
             fwdPos = [p for p in allKmers if chunk_start <= p.startEnd('fwd')[0] <= chunk_start+40]
             revPos = [p for p in allKmers if chunk_end-40 <= p.startEnd('rev')[0] <= chunk_end]
+            """
+            print(len(fwdPos), len(revPos))
+            sys.exit()
+            
 
             #Filter primers down on various key paramters
-            fwdThermo = [p for p in fwdPos if (60 <= p.tm <= 63) and (30 <= p.gc <= 55) and (p.maxPoly <= 5) and (p.hairpin <= 50.0)]
-            revThermo = [p for p in revPos if (60 <= p.tm <= 63) and (30 <= p.gc <= 55) and (p.maxPoly <= 5) and (p.hairpin <= 50.0)]
+            fwdThermo = [p for p in fwdPos if (60 <= p.tm <= 63) and (30 <= p.gc <= 55) and (p.maxPoly <= 5) and (p.hairpin('fwd') <= 50.0)]
+            revThermo = [p for p in revPos if (60 <= p.tm <= 63) and (30 <= p.gc <= 55) and (p.maxPoly <= 5) and (p.hairpin('rev') <= 50.0)]
 
             #Filter for valid length
             pairs = [_candidatePrimerPair(f,r) for f in fwdThermo for r in revThermo if 380 <= _candidatePrimerPair(f,r).productLength <= 420]
@@ -182,16 +198,13 @@ class poaMultiplexScheme(object):
             if pairs:
                 #Sort pairs on left ref coverage, right ref coverage
                 sortPairs = sorted(pairs, key=lambda x: (len(x.left.queryAlign(self.references[1:])), len(x.right.queryAlign(self.references[1:]))), reverse=True)
-                topPair = sortPairs[0]
-                f = topPair.left
-                r = topPair.right
-                print('top pair', len(f.queryAlign(self.references[1:])), len(r.queryAlign(self.references[1:])))
+                print('top pair', len(sortPairs[0].left.queryAlign(self.references[1:])), len(sortPairs[0].right.queryAlign(self.references[1:])))
 
                 #Get list of alts or None if failed to cover all references
-                leftAlts = topPair.fwdAlts(self.references, pairs, sortPairs)
-                rightAlts = topPair.revAlts(self.references, pairs, sortPairs)
+                leftAlts = sortPairs[0].fwdAlts(self.references, pairs, sortPairs)
+                rightAlts = sortPairs[0].revAlts(self.references, pairs, sortPairs)
 
-                #If there is a high enough scoring pair return
+                #If there is a list of alts return (even if empty)
                 if not leftAlts == None:
                     print('left alts', len(leftAlts), [len(p.queryAlign(self.references[1:])) for p in leftAlts])
                     if not rightAlts == None:
@@ -204,8 +217,8 @@ class poaMultiplexScheme(object):
                 chunk_start += self.step_size
                 chunk_end += self.step_size
                 # Hit end of regerence
-                if chunk_end > len(self.primary_reference):
-                    logger.debug("Region %i: hit right limit %i" %(region_num, len(self.primary_reference)))
+                if chunk_end > len(self.primaryReference):
+                    logger.debug("Region %i: hit right limit %i" %(region_num, len(self.primaryReference)))
                     raise NoSuitablePrimers("No suitable primers in region")
             else:
                 # Move left for all other regions
