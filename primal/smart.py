@@ -2,7 +2,7 @@ import logging
 import primer3
 from primal import settings
 from .exceptions import MaxGapReached, NoSuitablePrimers
-from .models import CandidatePrimer, CandidatePrimerPair, Region
+from .models import _candidatePrimer, _candidatePrimerPair, _region
 
 logger = logging.getLogger('Primal Log')
 

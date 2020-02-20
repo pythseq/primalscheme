@@ -6,7 +6,6 @@ from Bio.Graphics import GenomeDiagram
 from Bio.SeqFeature import FeatureLocation, SeqFeature
 from reportlab.lib import colors
 from .SMARTplex import SMARTplex
-from .multiplex import MultiplexScheme
 from .multiplex import poaMultiplexScheme
 from primal import settings
 

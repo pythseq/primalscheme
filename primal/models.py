@@ -5,7 +5,8 @@ from primal import settings
 from itertools import groupby
 
 from Bio.Seq import Seq
-from primer3 import calcTm, calcHairpin, calcHomodimer
+from primer3 import calcTm, calcHairpin, calcHomodimer, calcHeterodimer
+from primer3.bindings import calcEndStability
 from Porechop.porechop.cpp_function_wrappers import adapter_alignment
 
 logger = logging.getLogger('Primal Log')
@@ -17,7 +18,6 @@ class _primer(object):
         self.position = position
         self.seq = seq
         self.name = None
-        #self.penalty = None
 
     def startEnd(self, direction):
         if direction == 'fwd':
@@ -42,9 +42,9 @@ class _primer(object):
     #Stability of 3' ends
     def endStability(self, seq2, direction):
         if direction == 'fwd':
-            return calcEndStability(self.seq, seq2, mv_conc=50, dv_conc=1.5, dntp_conc=0.6).tm
+            return calcEndStability(self.seq, self.seq, mv_conc=50, dv_conc=1.5, dntp_conc=0.6).tm
         if direction == 'rev':
-            return calcEndStability(Seq(self.seq).reverse_complement()._data, seq2, mv_conc=50, dv_conc=1.5, dntp_conc=0.6).tm
+            return calcEndStability(Seq(self.seq).reverse_complement()._data, self.seq, mv_conc=50, dv_conc=1.5, dntp_conc=0.6).tm
 
     #Check the thermo calculations are the same for fwd and rev
     def revComp(self):
@@ -75,13 +75,12 @@ class _primer(object):
     def length(self):
         return len(self.seq)
 
-
 class _candidatePrimer(_primer):
     """A candidate primer for a region."""
 
     def __init__(self, position, seq):
         super(_candidatePrimer, self).__init__(position, seq)
-        penalty = 0
+        self.penalty = 0
 
     def __eq__(self, other):
         return self.seq == other.seq
@@ -109,22 +108,24 @@ class _candidatePrimer(_primer):
         if self.length < settings.global_args['PRIMER_OPT_SIZE']:
             self.penalty += settings.global_args['PRIMER_WT_SIZE_LT'] * (settings.global_args['PRIMER_OPT_SIZE'] - self.length)
         #Self any
-        if (self.tm - 5) <= self.selfAny:
+        if (self.tm - 5) <= self.homodimer:
             self.penalty += settings.global_args['PRIMER_WT_SELF_ANY_TH'] * (self.selfAny - (self.tm - 5 - 1))
         elif (self.tm - 5) > self.selfAny:
             self.penalty += settings.global_args['PRIMER_WT_SELF_ANY_TH'] * (1/(self.tm - 5 + 1 - self.selfAny))
-        #Self end
+        """
+        #End stability (not currently calculated)
         if (self.tm - 5) <= self.selfEnd:
             self.penalty += settings.global_args['PRIMER_WT_SELF_END_TH'] * (self.selfEnd - (self.tm - 5 - 1))
         elif (self.tm - 5) > self.selfAny:
             self.penalty += settings.global_args['PRIMER_WT_SELF_END_TH'] * (1/(self.tm - 5 + 1 - self.selfEnd))
+        """
         #Hairpin
         if (self.tm - 5) <= self.hairpin:
             self.penalty += settings.global_args['PRIMER_WT_HAIRPIN_TH'] * (self.hairpin - (self.tm - 5 - 1))
         elif (self.tm - 5) > self.selfAny:
             self.penalty += settings.global_args['PRIMER_WT_HAIRPIN_TH'] * (1/(self.tm - 5 + 1 - self.hairpin))
 
-    def queryAlign(self, references):
+    def queryMatch(self, references):
         return [ref.id for ref in references if ref[self.startEnd('fwd')[0]:self.startEnd('fwd')[1]].seq == self.seq]
 
 class _primerPair(object):
@@ -141,12 +142,13 @@ class _candidatePrimerPair(object):
     def __init__(self, left, right):
         self.left = left
         self.right = right
-        #self.leftAlts = []
-        #self.rightAlts = []
+        self.pairPenalty = self.left.penalty + self.right.penalty
+        self.heterodimer = calcHeterodimer(self.left.seq, self.right.revComp, mv_conc=50, dv_conc=1.5, dntp_conc=0.6).tm
+        self.endStability = calcEndStability(self.left.seq, self.right.revComp, mv_conc=50, dv_conc=1.5, dntp_conc=0.6).tm
 
     def fwdAlts(self, references, pairs, sortPairs, max_alts=5):
         #Update set of refs covered
-        fwdCov = set(self.left.queryAlign(references[1:]))
+        fwdCov = set(self.left.queryMatch(references[1:]))
         leftAlts = []
         #breakOut = False
         #Generate left alts
@@ -156,27 +158,27 @@ class _candidatePrimerPair(object):
             #Alts with valid length product
             fwdAlts = [p.left for p in pairs if p.right == sortPairs[0].right]
             #Sort alts on required refs then all refs
-            sortFwdAlts = sorted(fwdAlts, key=lambda x: (len(x.queryAlign(fwdReq)), len(x.queryAlign(references[1:]))), reverse=True)
+            sortFwdAlts = sorted(fwdAlts, key=lambda x: (len(x.queryMatch(fwdReq)), len(x.queryMatch(references[1:]))), reverse=True)
             #Store alts
             leftAlts.append(sortFwdAlts[0])
             #Update refs covered
             lastCov = len(fwdCov)
-            fwdCov.update(sortFwdAlts[0].queryAlign(references[1:]))
+            fwdCov.update(sortFwdAlts[0].queryMatch(references[1:]))
             if lastCov == len(fwdCov):
                 return None
         return leftAlts
 
     def revAlts(self, references, pairs, sortPairs):
-        revCov = set(sortPairs[0].right.queryAlign(references[1:]))
+        revCov = set(sortPairs[0].right.queryMatch(references[1:]))
         rightAlts = []
         #breakOut = False
         while len(revCov) < len(references[1:]):
             revReq = [r for r in references[1:] if r.id not in revCov]
             revAlts = [p.right for p in pairs if p.left == sortPairs[0].left]
-            sortRevAlts = sorted(revAlts, key=lambda x: (len(x.queryAlign(revReq)), len(x.queryAlign(references[1:]))), reverse=True)
+            sortRevAlts = sorted(revAlts, key=lambda x: (len(x.queryMatch(revReq)), len(x.queryMatch(references[1:]))), reverse=True)
             rightAlts.append(sortRevAlts[0])
             lastCov = len(revCov)
-            revCov.update(sortRevAlts[0].queryAlign(references[1:]))
+            revCov.update(sortRevAlts[0].queryMatch(references[1:]))
             if lastCov == len(revCov):
                 return None
         return rightAlts
