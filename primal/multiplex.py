@@ -161,30 +161,15 @@ class poaMultiplexScheme(object):
 
             #Digest the references (except the consensus) into candidatePrimers
 
-            fwdPos = set()
-            revPos = set()
-            for ref in self.references[1:]:
-                seq = str(ref.seq[chunk_start:chunk_start+40])
-                for k in range(22, 30+1):
-                    fwdPos.update(self.digestSeq(k, chunk_start, seq))
-                seq = str(ref.seq[chunk_end-40:chunk_end])
-                for k in range(22, 30+1):
-                    revPos.update(self.digestSeq(k, chunk_end-40, seq))
-            """
-
             allKmers = set()
             for ref in self.references[1:]:
                 seq = str(ref.seq[chunk_start:chunk_end])
                 for k in range(22, 30+1):
                     allKmers.update(self.digestSeq(k, chunk_start, seq))
 
-            #Filter for valid position
-            fwdPos = [p for p in allKmers if chunk_start <= p.startEnd('fwd')[0] <= chunk_start+40]
-            revPos = [p for p in allKmers if chunk_end-40 <= p.startEnd('rev')[0] <= chunk_end]
-            """
-            print(len(fwdPos), len(revPos))
-            sys.exit()
-            
+            #Filter for valid start and end position
+            fwdPos = [p for p in allKmers if p.startEnd('fwd')[0] >= chunk_start and p.startEnd('fwd')[1] <= chunk_start+40]
+            revPos = [p for p in allKmers if p.startEnd('rev')[0] <= chunk_end and p.startEnd('rev')[1] >= chunk_end-40]
 
             #Filter primers down on various key paramters
             fwdThermo = [p for p in fwdPos if (60 <= p.tm <= 63) and (30 <= p.gc <= 55) and (p.maxPoly <= 5) and (p.hairpin('fwd') <= 50.0)]
