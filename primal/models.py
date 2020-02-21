@@ -12,75 +12,31 @@ from Porechop.porechop.cpp_function_wrappers import adapter_alignment
 logger = logging.getLogger('Primal Log')
 
 class _primer(object):
-    """A simple primer."""
+    """A simple primer class"""
 
-    def __init__(self, position, seq):
-        self.position = position
-        self.seq = seq
+    def __init__(self, position, seq, direction):
+        self.direction = direction
         self.name = None
+        if self.direction == 'fwd':
+            self.seq = seq
+            self.start = position
+            self.end = position + len(self.seq)
+        elif self.direction == 'rev':
+            self.seq = self.revComp(seq)
+            self.start = position + len(self.seq)
+            self.end = position
 
-    def startEnd(self, direction):
-        if direction == 'fwd':
-            return (self.position, self.position + self.length)
-        if direction == 'rev':
-            return (self.position + self.length, self.position)
-
-    #Stability of homodimer
-    def homodimer(self, direction):
-        if direction == 'fwd':
-            return calcHomodimer(self.seq, mv_conc=50, dv_conc=1.5, dntp_conc=0.6).tm
-        if direction == 'rev':
-            return calcHomodimer(Seq(self.seq).reverse_complement()._data, mv_conc=50, dv_conc=1.5, dntp_conc=0.6).tm
-
-    #Stability of hairpin
-    def hairpin(self, direction):
-        if direction == 'fwd':
-            return calcHairpin(self.seq, mv_conc=50, dv_conc=1.5, dntp_conc=0.6).tm
-        if direction == 'rev':
-            return calcHairpin(Seq(self.seq).reverse_complement()._data, mv_conc=50, dv_conc=1.5, dntp_conc=0.6).tm
-
-    #Stability of 3' ends
-    def endStability(self, seq2, direction):
-        if direction == 'fwd':
-            return calcEndStability(self.seq, self.seq, mv_conc=50, dv_conc=1.5, dntp_conc=0.6).tm
-        if direction == 'rev':
-            return calcEndStability(Seq(self.seq).reverse_complement()._data, self.seq, mv_conc=50, dv_conc=1.5, dntp_conc=0.6).tm
-
-    #Check the thermo calculations are the same for fwd and rev
-    def revComp(self):
-        return Seq(self.seq).reverse_complement()
-
-    @property
-    def tm(self):
-        return calcTm(self.seq, mv_conc=50, dv_conc=1.5, dntp_conc=0.6)
-
-    #Stability of last 5 3' bases
-    @property
-    def endStability(self):
-        #Only works for fwd primers
-        return calcTm(self.seq[-5:], mv_conc=50, dv_conc=1.5, dntp_conc=0.6)
-
-    #GC content
-    @property
-    def gc(self):
-        return 100.0 * (self.seq.count('G') + self.seq.count('C')) / len(self.seq)
-
-    #Max homopolymer length using itertools
-    @property
-    def maxPoly(self):
-        return sorted([(len(list(g))) for k,g in groupby(self.seq)], reverse=True)[0]
-
-    #Length of primer
-    @property
-    def length(self):
-        return len(self.seq)
+    #Rev comp reverse primers
+    def revComp(self, seq):
+        return Seq(seq).reverse_complement()._data
 
 class _candidatePrimer(_primer):
-    """A candidate primer for a region."""
+    """A candidate primer super class"""
 
-    def __init__(self, position, seq):
-        super(_candidatePrimer, self).__init__(position, seq)
+    def __init__(self, position, seq, direction):
+        super(_candidatePrimer, self).__init__(position, seq, direction)
         self.penalty = 0
+        #self.calcPenalty()
 
     def __eq__(self, other):
         return self.seq == other.seq
@@ -89,6 +45,7 @@ class _candidatePrimer(_primer):
         return hash(self.seq)
 
     def calcPenalty(self):
+        #As per penalty routine described in http://primer3.ut.ee/primer3web_help.htm
         #Tm high
         if self.tm > settings.global_args['PRIMER_OPT_TM']:
             self.penalty += settings.global_args['PRIMER_WT_TM_GT'] * (self.tm - settings.global_args['PRIMER_OPT_TM'])
@@ -107,44 +64,96 @@ class _candidatePrimer(_primer):
         #Length low
         if self.length < settings.global_args['PRIMER_OPT_SIZE']:
             self.penalty += settings.global_args['PRIMER_WT_SIZE_LT'] * (settings.global_args['PRIMER_OPT_SIZE'] - self.length)
-        #Self any
-        if (self.tm - 5) <= self.homodimer:
-            self.penalty += settings.global_args['PRIMER_WT_SELF_ANY_TH'] * (self.selfAny - (self.tm - 5 - 1))
-        elif (self.tm - 5) > self.selfAny:
-            self.penalty += settings.global_args['PRIMER_WT_SELF_ANY_TH'] * (1/(self.tm - 5 + 1 - self.selfAny))
         """
-        #End stability (not currently calculated)
-        if (self.tm - 5) <= self.selfEnd:
-            self.penalty += settings.global_args['PRIMER_WT_SELF_END_TH'] * (self.selfEnd - (self.tm - 5 - 1))
-        elif (self.tm - 5) > self.selfAny:
-            self.penalty += settings.global_args['PRIMER_WT_SELF_END_TH'] * (1/(self.tm - 5 + 1 - self.selfEnd))
-        """
+        #All of the default weights are 0 so ignore
+        #Homodimer
+        if (self.tm - 5) <= self.homodimer('fwd'):
+            self.penalty += settings.global_args['PRIMER_WT_SELF_ANY_TH'] * (self.homodimer('fwd') - (self.tm - 5 - 1))
+        elif (self.tm - 5) > self.homodimer('fwd'):
+            self.penalty += settings.global_args['PRIMER_WT_SELF_ANY_TH'] * (1/(self.tm - 5 + 1 - self.homodimer('fwd')))
+        #End stability
+        if (self.tm - 5) <= self.endStability('fwd'):
+            self.penalty += settings.global_args['PRIMER_WT_SELF_END_TH'] * (self.endStability('fwd') - (self.tm - 5 - 1))
+        elif (self.tm - 5) > self.endStability('fwd'):
+            self.penalty += settings.global_args['PRIMER_WT_SELF_END_TH'] * (1/(self.tm - 5 + 1 - self.endStability('fwd')))
         #Hairpin
-        if (self.tm - 5) <= self.hairpin:
-            self.penalty += settings.global_args['PRIMER_WT_HAIRPIN_TH'] * (self.hairpin - (self.tm - 5 - 1))
-        elif (self.tm - 5) > self.selfAny:
-            self.penalty += settings.global_args['PRIMER_WT_HAIRPIN_TH'] * (1/(self.tm - 5 + 1 - self.hairpin))
+        if (self.tm - 5) <= self.hairpin('fwd'):
+            self.penalty += settings.global_args['PRIMER_WT_HAIRPIN_TH'] * (self.hairpin('fwd') - (self.tm - 5 - 1))
+        elif (self.tm - 5) > self.hairpin('fwd'):
+            self.penalty += settings.global_args['PRIMER_WT_HAIRPIN_TH'] * (1/(self.tm - 5 + 1 - self.hairpin('fwd')))
+        """
 
+    #Get reference coverage
     def queryMatch(self, references):
         return [ref.id for ref in references if ref[self.startEnd('fwd')[0]:self.startEnd('fwd')[1]].seq == self.seq]
 
+    #Stability of homodimer
+    @property
+    def homodimer(self):
+        return calcHomodimer(self.seq, mv_conc=50, dv_conc=1.5, dntp_conc=0.6).tm
+
+    #Stability of hairpin
+    @property
+    def hairpin(self):
+        return calcHairpin(self.seq, mv_conc=50, dv_conc=1.5, dntp_conc=0.6).tm
+
+    #Stability of 3' ends
+    @property
+    def endStability(self):
+        return calcEndStability(self.seq, self.seq, mv_conc=50, dv_conc=1.5, dntp_conc=0.6).tm
+
+    #Tm
+    @property
+    def tm(self):
+        return calcTm(self.seq, mv_conc=50, dv_conc=1.5, dntp_conc=0.6)
+
+    #Stability of last 5 3' bases
+    @property
+    def endStability(self):
+        return calcTm(self.seq[-5:], mv_conc=50, dv_conc=1.5, dntp_conc=0.6)
+
+    #GC content
+    @property
+    def gc(self):
+        return 100.0 * (self.seq.count('G') + self.seq.count('C')) / len(self.seq)
+
+    #Max homopolymer length using itertools
+    @property
+    def maxPoly(self):
+        return sorted([(len(list(g))) for k,g in groupby(self.seq)], reverse=True)[0]
+
+    #Length of primer
+    @property
+    def length(self):
+        return len(self.seq)
+
 class _primerPair(object):
-    """A pair of primers for a region."""
+    """A simple primer pair class"""
 
     def __init__(self, left, right):
         self.left = left
         self.right = right
-        #self.penalty = None
 
-class _candidatePrimerPair(object):
-    """A pair of candidate primers for a region."""
+    @property
+    def productLength(self):
+        return self.right.start - self.left.start + 1
+
+class _candidatePrimerPair(_primerPair):
+    """A primer pair super class"""
 
     def __init__(self, left, right):
-        self.left = left
-        self.right = right
+        super(_candidatePrimerPair, self).__init__(left, right)
+        self.left.calcPenalty()
+        self.right.calcPenalty()
         self.pairPenalty = self.left.penalty + self.right.penalty
-        self.heterodimer = calcHeterodimer(self.left.seq, self.right.revComp, mv_conc=50, dv_conc=1.5, dntp_conc=0.6).tm
-        self.endStability = calcEndStability(self.left.seq, self.right.revComp, mv_conc=50, dv_conc=1.5, dntp_conc=0.6).tm
+
+    @property
+    def heterodimer(self):
+        return calcHeterodimer(self.left.seq, self.right.revComp._data, mv_conc=50, dv_conc=1.5, dntp_conc=0.6).tm
+
+    @property
+    def endStability(self):
+        return calcEndStability(self.left.seq, self.right.revComp._data, mv_conc=50, dv_conc=1.5, dntp_conc=0.6).tm
 
     def fwdAlts(self, references, pairs, sortPairs, max_alts=5):
         #Update set of refs covered
@@ -185,7 +194,7 @@ class _candidatePrimerPair(object):
 
     @property
     def productLength(self):
-        return self.right.startEnd('rev')[0] - self.left.startEnd('fwd')[0] + 1
+        return self.right.start - self.left.start + 1
 
 
 class _region(object):

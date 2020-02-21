@@ -2,7 +2,7 @@ import logging
 import primer3
 from primal import settings
 from .exceptions import MaxGapReached, NoSuitablePrimers
-from .models import _candidatePrimer, _candidatePrimerPair, _primerPair, _region
+from .models import _primer, _primerPair, _candidatePrimer, _candidatePrimerPair, _region
 from Bio.Align import MultipleSeqAlignment
 import sys
 from itertools import product
@@ -117,7 +117,7 @@ class poaMultiplexScheme(object):
         self.regions = regions
 
     def digestSeq(self, k, start, seq):
-            return [_candidatePrimer(int(start)+i, seq[i:i+k]) for i in range((len(seq)-k)+1)]
+            return [(int(start)+i, seq[i:i+k]) for i in range((len(seq)-k)+1)]
 
     def poaFindPrimers(self, region_num, left_primer_left_limit, left_primer_right_limit, is_last_region):
         """
@@ -129,8 +129,8 @@ class poaMultiplexScheme(object):
 
         # Calculate where to slice the reference
         if region_num == 1:
-            chunk_start = 10
-            chunk_end = int((1 + self.max_variation / 2) * self.amplicon_length) + 10
+            chunk_start = 0
+            chunk_end = int((1 + self.max_variation / 2) * self.amplicon_length)
         elif is_last_region:
             # Last region work backwards
             chunk_start = int(len(self.primaryReference) - ((1 + self.max_variation / 2) * self.amplicon_length))
@@ -170,23 +170,37 @@ class poaMultiplexScheme(object):
             #Filter for valid start and end position
             #fwdPos = [p for p in allKmers if p.startEnd('fwd')[0] >= chunk_start and p.startEnd('fwd')[1] <= chunk_start+40]
             #revPos = [p for p in allKmers if p.startEnd('rev')[0] <= chunk_end and p.startEnd('rev')[1] >= chunk_end-40]
-            fwdPos = [p for p in allKmers if chunk_start <= p.startEnd('fwd')[0] < chunk_start+40]
-            revPos = [p for p in allKmers if chunk_end-40 <= p.startEnd('rev')[0] < chunk_end]
+            fwdPos = [_candidatePrimer(k[0], k[1], 'fwd') for k in allKmers if chunk_start <= _candidatePrimer(k[0], k[1], 'fwd').start < chunk_start+40]
+            revPos = [_candidatePrimer(k[0], k[1], 'rev') for k in allKmers if chunk_end-40 <= _candidatePrimer(k[0], k[1], 'fwd').start < chunk_end]
 
             #Filter primers down on various key paramters
-            fwdThermo = [p for p in fwdPos if (30 <= p.gc <= 55) and (60 <= p.tm <= 63) and (p.hairpin('fwd') <= 50.0) and (p.maxPoly <= 5)]
-            revThermo = [p for p in revPos if (30 <= p.gc <= 55) and (60 <= p.tm <= 63) and (p.hairpin('rev') <= 50.0) and (p.maxPoly <= 5)]
+            fwdThermo = [p for p in fwdPos if (30 <= p.gc <= 55) and (60 <= p.tm <= 63) and (p.hairpin <= 50.0) and (p.maxPoly <= 5)]
+            revThermo = [p for p in revPos if (30 <= p.gc <= 55) and (60 <= p.tm <= 63) and (p.hairpin <= 50.0) and (p.maxPoly <= 5)]
 
             #Filter for valid length
-            pairs = [_candidatePrimerPair(f,r) for f in fwdThermo for r in revThermo if 380 <= _candidatePrimerPair(f,r).productLength <= 420]
+            pairs = [_primerPair(f,r) for f in fwdThermo for r in revThermo if 380 <= _primerPair(f,r).productLength <= 420]
             logger.info("Region %i: current position returned %i left and %i right candidate primers" %(region_num, len(fwdThermo), len(revThermo)))
             logger.info("Region %i: current position returned %i candidate primer pairs" %(region_num, len(pairs)))
 
-            sys.exit()
             if pairs:
                 #Sort pairs on left ref coverage, right ref coverage
-                sortPairs = sorted(pairs, key=lambda x: (len(x.left.queryAlign(self.references[1:])), len(x.right.queryAlign(self.references[1:]))), reverse=True)
-                print('top pair', len(sortPairs[0].left.queryAlign(self.references[1:])), len(sortPairs[0].right.queryAlign(self.references[1:])))
+                scoredPairs = [_candidatePrimerPair(p.left, p.right) for p in pairs]
+                sortPairs = sorted(scoredPairs, key=lambda x: x.pairPenalty)
+                #sortPairs = [p for p in scoredPairs if p.left.seq == 'AGAATTTTTAGGATCTTTTGTGTGCGA']
+                #sortPairs = sorted(scoredPairs, key=lambda x: (len(x.left.queryMatch(self.references[1:])), len(x.right.queryMatch(self.references[1:]))), reverse=True)
+                #print('top pair', len(sortPairs[0].left.queryMatch(self.references[1:])), len(sortPairs[0].right.queryMatch(self.references[1:])))
+                print(sorted([p.left.penalty for p in sortPairs][:20]))
+                pprint(vars(sortPairs[0].left))
+                #print('end stability', sortPairs[0].left.endStability('fwd'))
+                print('gc', sortPairs[0].left.gc)
+                print('hairpin', sortPairs[0].left.hairpin)
+                print('homodimer', sortPairs[0].left.homodimer)
+                print('tm', sortPairs[0].left.tm)
+                pprint(vars(sortPairs[0].right))
+                pprint(vars(sortPairs[0]))
+                print(sortPairs[0].productLength)
+
+                sys.exit()
 
                 #Get list of alts or None if failed to cover all references
                 leftAlts = sortPairs[0].fwdAlts(self.references, pairs, sortPairs)
@@ -194,9 +208,9 @@ class poaMultiplexScheme(object):
 
                 #If there is a list of alts return (even if empty)
                 if not leftAlts == None:
-                    print('left alts', len(leftAlts), [len(p.queryAlign(self.references[1:])) for p in leftAlts])
+                    print('left alts', len(leftAlts), [len(p.queryMatch(self.references[1:])) for p in leftAlts])
                     if not rightAlts == None:
-                        print('right alts', len(rightAlts), [len(p.queryAlign(self.references[1:])) for p in rightAlts])
+                        print('right alts', len(rightAlts), [len(p.queryMatch(self.references[1:])) for p in rightAlts])
                         return _region(region_num, chunk_start, sortPairs, leftAlts, rightAlts, self.references, self.prefix, self.max_alts)
 
             # Move right if first region or to open gap
