@@ -153,27 +153,31 @@ class poaMultiplexScheme(object):
         hit_left_limit = False
         while True:
             # Slice primary reference
-            seq = str(self.primaryReference.seq[chunk_start:chunk_end])
-            p3_seq_args['SEQUENCE_TEMPLATE'] = seq
-            p3_seq_args['SEQUENCE_INCLUDED_REGION'] = [0, len(seq) - 1]
+            #seq = str(self.primaryReference.seq[chunk_start:chunk_end])
+            #p3_seq_args['SEQUENCE_TEMPLATE'] = seq
+            #p3_seq_args['SEQUENCE_INCLUDED_REGION'] = [0, len(seq) - 1]
+            #p3_seq_args['SEQUENCE_PRIMER'] = 'TCTTTTGTGTGCGAATAACTATGAGGA'
+            #print(p3_seq_args['SEQUENCE_TEMPLATE'], p3_seq_args['SEQUENCE_INCLUDED_REGION'])
             logger.info("Region %i: reference chunk %i:%i, length %i" %(region_num, chunk_start, chunk_end, chunk_end-chunk_start))
-            primer3_output = primer3.bindings.designPrimers(p3_seq_args, p3_global_args)
-            pprint(primer3_output)
+            #primer3_output = primer3.bindings.designPrimers(p3_seq_args, p3_global_args)
+            #pprint(primer3_output)
 
             #Digest the references (except the consensus) into candidatePrimers
             allKmers = set()
-            #for ref in self.references[1:]:
-                #seq = str(ref.seq[chunk_start:chunk_end])
-            for k in range(22, 30+1):
-                allKmers.update(self.digestSeq(k, chunk_start, seq))
+            for ref in self.references[1:]:
+                seq = str(ref.seq[chunk_start:chunk_end])
+                for k in range(22, 30+1):
+                    allKmers.update(self.digestSeq(k, chunk_start, seq))
 
             #Filter for valid start and end position
             #fwdPos = [p for p in allKmers if p.startEnd('fwd')[0] >= chunk_start and p.startEnd('fwd')[1] <= chunk_start+40]
             #revPos = [p for p in allKmers if p.startEnd('rev')[0] <= chunk_end and p.startEnd('rev')[1] >= chunk_end-40]
             fwdPos = [_candidatePrimer(k[0], k[1], 'fwd') for k in allKmers if chunk_start <= _candidatePrimer(k[0], k[1], 'fwd').start < chunk_start+40]
-            revPos = [_candidatePrimer(k[0], k[1], 'rev') for k in allKmers if chunk_end-40 <= _candidatePrimer(k[0], k[1], 'fwd').start < chunk_end]
+            revPos = [_candidatePrimer(k[0], k[1], 'rev') for k in allKmers if chunk_end-40 <= _candidatePrimer(k[0], k[1], 'rev').start < chunk_end]
+            #print(vars([p for p in fwdPos if p.seq == 'AGAATTTTTAGGATCTTTTGTGTGCGA'][0]))
+            #print(vars([p for p in revPos if p.seq == 'GGGTTGTTGAATCTCCAATCCTCT'][0]))
 
-            #Filter primers down on various key paramters
+            #Perform the hard filtering
             fwdThermo = [p for p in fwdPos if (30 <= p.gc <= 55) and (60 <= p.tm <= 63) and (p.hairpin <= 50.0) and (p.maxPoly <= 5)]
             revThermo = [p for p in revPos if (30 <= p.gc <= 55) and (60 <= p.tm <= 63) and (p.hairpin <= 50.0) and (p.maxPoly <= 5)]
 
@@ -184,23 +188,23 @@ class poaMultiplexScheme(object):
 
             if pairs:
                 #Sort pairs on left ref coverage, right ref coverage
+                #Sort pairs on pairPenalty
                 scoredPairs = [_candidatePrimerPair(p.left, p.right) for p in pairs]
                 sortPairs = sorted(scoredPairs, key=lambda x: x.pairPenalty)
-                #sortPairs = [p for p in scoredPairs if p.left.seq == 'AGAATTTTTAGGATCTTTTGTGTGCGA']
+                #sortPairs = [p for p in scoredPairs if p.left.seq == 'AGAATTTTTAGGATCTTTTGTGTGCGA' and p.right.seq == 'GGGTTGTTGAATCTCCAATCCTCT']
                 #sortPairs = sorted(scoredPairs, key=lambda x: (len(x.left.queryMatch(self.references[1:])), len(x.right.queryMatch(self.references[1:]))), reverse=True)
                 #print('top pair', len(sortPairs[0].left.queryMatch(self.references[1:])), len(sortPairs[0].right.queryMatch(self.references[1:])))
-                print(sorted([p.left.penalty for p in sortPairs][:20]))
-                pprint(vars(sortPairs[0].left))
-                #print('end stability', sortPairs[0].left.endStability('fwd'))
-                print('gc', sortPairs[0].left.gc)
-                print('hairpin', sortPairs[0].left.hairpin)
-                print('homodimer', sortPairs[0].left.homodimer)
-                print('tm', sortPairs[0].left.tm)
-                pprint(vars(sortPairs[0].right))
+                print(sorted([p.pairPenalty for p in sortPairs][:20]))
+
                 pprint(vars(sortPairs[0]))
                 print(sortPairs[0].productLength)
+                pprint(vars(sortPairs[0].left))
+                pprint(vars(sortPairs[0].right))
 
-                sys.exit()
+                print('gc', sortPairs[0].left.gc, sortPairs[0].right.gc)
+                print('hairpin', sortPairs[0].left.hairpin, sortPairs[0].right.hairpin)
+                print('homodimer', sortPairs[0].left.homodimer, sortPairs[0].right.homodimer)
+                print('tm', sortPairs[0].left.tm, sortPairs[0].right.tm)
 
                 #Get list of alts or None if failed to cover all references
                 leftAlts = sortPairs[0].fwdAlts(self.references, pairs, sortPairs)

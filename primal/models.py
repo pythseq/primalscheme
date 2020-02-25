@@ -36,7 +36,7 @@ class _candidatePrimer(_primer):
     def __init__(self, position, seq, direction):
         super(_candidatePrimer, self).__init__(position, seq, direction)
         self.penalty = 0
-        #self.calcPenalty()
+        self.calcPenalty()
 
     def __eq__(self, other):
         return self.seq == other.seq
@@ -143,8 +143,8 @@ class _candidatePrimerPair(_primerPair):
 
     def __init__(self, left, right):
         super(_candidatePrimerPair, self).__init__(left, right)
-        self.left.calcPenalty()
-        self.right.calcPenalty()
+        #self.left.calcPenalty()
+        #self.right.calcPenalty()
         self.pairPenalty = self.left.penalty + self.right.penalty
 
     @property
@@ -159,7 +159,6 @@ class _candidatePrimerPair(_primerPair):
         #Update set of refs covered
         fwdCov = set(self.left.queryMatch(references[1:]))
         leftAlts = []
-        #breakOut = False
         #Generate left alts
         while len(fwdCov) < len(references[1:]):
             #Refs not covered
@@ -180,7 +179,6 @@ class _candidatePrimerPair(_primerPair):
     def revAlts(self, references, pairs, sortPairs):
         revCov = set(sortPairs[0].right.queryMatch(references[1:]))
         rightAlts = []
-        #breakOut = False
         while len(revCov) < len(references[1:]):
             revReq = [r for r in references[1:] if r.id not in revCov]
             revAlts = [p.right for p in pairs if p.left == sortPairs[0].left]
