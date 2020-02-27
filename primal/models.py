@@ -85,7 +85,10 @@ class _candidatePrimer(_primer):
 
     #Get reference coverage
     def queryMatch(self, references):
-        return [ref.id for ref in references if ref[self.startEnd('fwd')[0]:self.startEnd('fwd')[1]].seq == self.seq]
+        if self.direction == 'fwd':
+            return [ref.id for ref in references if ref[self.start:self.end].seq == self.seq]
+        elif self.direction == 'rev':
+            return [ref.id for ref in references if ref[self.end:self.start].seq == self.revComp(self.seq)]
 
     #Stability of homodimer
     @property
@@ -179,6 +182,7 @@ class _candidatePrimerPair(_primerPair):
     def revAlts(self, references, pairs, sortPairs):
         revCov = set(sortPairs[0].right.queryMatch(references[1:]))
         rightAlts = []
+        print(len(revCov), len(references[1:]))
         while len(revCov) < len(references[1:]):
             revReq = [r for r in references[1:] if r.id not in revCov]
             revAlts = [p.right for p in pairs if p.left == sortPairs[0].left]
