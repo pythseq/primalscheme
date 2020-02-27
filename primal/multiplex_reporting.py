@@ -19,8 +19,8 @@ class poaMultiplexReporter(poaMultiplexScheme):
         filepath = os.path.join(path, '{}.scheme.bed'.format(self.prefix))
         with open(filepath, 'w') as bedhandle:
             for r in self.regions:
-                print(*map(str, [self.primaryReference.id, r.topPair.left.startEnd('fwd')[0], r.topPair.left.startEnd('fwd')[1], r.topPair.left.name, r.pool]), sep='\t', file=bedhandle)
-                print(*map(str, [self.primaryReference.id, r.topPair.right.startEnd('rev')[0], r.topPair.right.startEnd('rev')[1], r.topPair.right.name, r.pool]), sep='\t', file=bedhandle)
+                print(*map(str, [self.primaryReference.id, r.topPair.left.start, r.topPair.left.end, r.topPair.left.name, r.pool]), sep='\t', file=bedhandle)
+                print(*map(str, [self.primaryReference.id, r.topPair.right.end, r.topPair.right.start, r.topPair.right.name, r.pool]), sep='\t', file=bedhandle)
 
     def write_tsv(self, path='./'):
         logger.info('Writing TSV')
@@ -140,7 +140,7 @@ class poaMultiplexReporter(poaMultiplexScheme):
         #make the gc track
         window = 50
         gc_set = GenomeDiagram.GraphSet('GC skew')
-        graphdata1 = self.apply_to_window(self.primary_reference.seq, window, self.calc_gc_skew)
+        graphdata1 = self.apply_to_window(self.primaryReference.seq, window, self.calc_gc_skew)
         gc_set.new_graph(graphdata1, 'GC Skew', style='line', color=colors.violet, altcolor=colors.purple)
         gc_track = GenomeDiagram.Track('GC Skew', height=1.5, greytrack=0, scale_largetick_interval=1e3)
         gc_track.add_set(gc_set)
@@ -150,9 +150,9 @@ class poaMultiplexReporter(poaMultiplexScheme):
             region = str(r.region_num)
             strand = 1 if r.region_num % 2 else -1
 
-            fwd_feature = SeqFeature(FeatureLocation(r.top_pair.left.start, r.top_pair.left.end, strand=strand))
-            rev_feature = SeqFeature(FeatureLocation(r.top_pair.right.end, r.top_pair.right.start, strand=strand))
-            region_feature = SeqFeature(FeatureLocation(r.top_pair.left.start, r.top_pair.right.start, strand=strand))
+            fwd_feature = SeqFeature(FeatureLocation(r.topPair.left.start, r.topPair.left.end, strand=strand))
+            rev_feature = SeqFeature(FeatureLocation(r.topPair.right.end, r.topPair.right.start, strand=strand))
+            region_feature = SeqFeature(FeatureLocation(r.topPair.left.start, r.topPair.right.start, strand=strand))
 
             primer_color = colors.red #if strand == 1 else colors.blue
             region_color = colors.palevioletred #if strand == 1 else colors.lightblue
@@ -167,8 +167,8 @@ class poaMultiplexReporter(poaMultiplexScheme):
         gd_diagram.add_track(primer_track, 2)
         gd_diagram.add_track(gc_track, 1)
 
-        rows = max(2, int(round(len(self.primary_reference) / 10000.0)))
-        gd_diagram.draw(format='linear', pagesize=(300 * rows, 200 * rows), fragments=rows, start=0, end=len(self.primary_reference))
+        rows = max(2, int(round(len(self.primaryReference) / 10000.0)))
+        gd_diagram.draw(format='linear', pagesize=(300 * rows, 200 * rows), fragments=rows, start=0, end=len(self.primaryReference))
 
         pdf_filepath = os.path.join(path, '{}.pdf'.format(self.prefix))
         svg_filepath = os.path.join(path, '{}.svg'.format(self.prefix))
