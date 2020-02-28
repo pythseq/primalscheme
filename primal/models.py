@@ -33,10 +33,11 @@ class _primer(object):
 class _candidatePrimer(_primer):
     """A candidate primer super class"""
 
-    def __init__(self, position, seq, direction):
+    def __init__(self, position, seq, direction, references):
         super(_candidatePrimer, self).__init__(position, seq, direction)
         self.penalty = 0
-        self.calcPenalty()
+        self.refCov = self.queryMatch(references)
+        self.calcPenalty(references)
 
     def __eq__(self, other):
         return self.seq == other.seq
@@ -44,7 +45,7 @@ class _candidatePrimer(_primer):
     def __hash__(self):
         return hash(self.seq)
 
-    def calcPenalty(self):
+    def calcPenalty(self, references):
         #As per penalty routine described in http://primer3.ut.ee/primer3web_help.htm
         #Tm high
         if self.tm > settings.global_args['PRIMER_OPT_TM']:
@@ -64,6 +65,9 @@ class _candidatePrimer(_primer):
         #Length low
         if self.length < settings.global_args['PRIMER_OPT_SIZE']:
             self.penalty += settings.global_args['PRIMER_WT_SIZE_LT'] * (settings.global_args['PRIMER_OPT_SIZE'] - self.length)
+        #Reference coverage
+        if len(self.refCov) < len(references):
+            self.penalty += 1.0 * (len(references) - len(self.refCov))
         """
         #All of the default weights are 0 so ignore
         #Homodimer
@@ -146,8 +150,6 @@ class _candidatePrimerPair(_primerPair):
 
     def __init__(self, left, right):
         super(_candidatePrimerPair, self).__init__(left, right)
-        #self.left.calcPenalty()
-        #self.right.calcPenalty()
         self.pairPenalty = self.left.penalty + self.right.penalty
 
     @property
@@ -160,36 +162,35 @@ class _candidatePrimerPair(_primerPair):
 
     def fwdAlts(self, references, pairs, sortPairs, max_alts=5):
         #Update set of refs covered
-        fwdCov = set(self.left.queryMatch(references[1:]))
+        fwdCov = set(self.left.refCov) #set(self.left.queryMatch(references[1:]))
         leftAlts = []
         #Generate left alts
-        while len(fwdCov) < len(references[1:]):
+        while len(fwdCov) < len(references):
             #Refs not covered
-            fwdReq = [r for r in references[1:] if r.id not in fwdCov]
+            fwdReq = [r for r in references if r.id not in fwdCov]
             #Alts with valid length product
             fwdAlts = [p.left for p in pairs if p.right == sortPairs[0].right]
             #Sort alts on required refs then all refs
-            sortFwdAlts = sorted(fwdAlts, key=lambda x: (len(x.queryMatch(fwdReq)), len(x.queryMatch(references[1:]))), reverse=True)
+            sortFwdAlts = sorted(fwdAlts, key=lambda x: (len(x.queryMatch(fwdReq)), len(x.queryMatch(references))), reverse=True)
             #Store alts
             leftAlts.append(sortFwdAlts[0])
             #Update refs covered
             lastCov = len(fwdCov)
-            fwdCov.update(sortFwdAlts[0].queryMatch(references[1:]))
+            fwdCov.update(sortFwdAlts[0].queryMatch(references))
             if lastCov == len(fwdCov):
                 return None
         return leftAlts
 
     def revAlts(self, references, pairs, sortPairs):
-        revCov = set(sortPairs[0].right.queryMatch(references[1:]))
+        revCov = set(self.right.refCov) #set(sortPairs[0].right.queryMatch(references[1:]))
         rightAlts = []
-        print(len(revCov), len(references[1:]))
-        while len(revCov) < len(references[1:]):
-            revReq = [r for r in references[1:] if r.id not in revCov]
+        while len(revCov) < len(references):
+            revReq = [r for r in references if r.id not in revCov]
             revAlts = [p.right for p in pairs if p.left == sortPairs[0].left]
-            sortRevAlts = sorted(revAlts, key=lambda x: (len(x.queryMatch(revReq)), len(x.queryMatch(references[1:]))), reverse=True)
+            sortRevAlts = sorted(revAlts, key=lambda x: (len(x.queryMatch(revReq)), len(x.queryMatch(references))), reverse=True)
             rightAlts.append(sortRevAlts[0])
             lastCov = len(revCov)
-            revCov.update(sortRevAlts[0].queryMatch(references[1:]))
+            revCov.update(sortRevAlts[0].queryMatch(references))
             if lastCov == len(revCov):
                 return None
         return rightAlts

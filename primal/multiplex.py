@@ -122,6 +122,9 @@ class poaMultiplexScheme(object):
     def digestSeq(self, k, start, seq):
             return [(int(start)+i, seq[i:i+k]) for i in range((len(seq)-k)+1)]
 
+    def dnaBases(self, seq):
+            return len(set(seq) - set(['A','C','G','T']))==0
+
     def poaFindPrimers(self, region_num, left_primer_left_limit, left_primer_right_limit, is_last_region):
         """
         Find primers for a given region.
@@ -145,25 +148,29 @@ class poaMultiplexScheme(object):
         initial_chunk_start = chunk_start
         initial_chunk_end = chunk_end
 
+        """
         # Primer3 setup
         p3_global_args = settings.global_args
         p3_seq_args = settings.seq_args
         p3_global_args['PRIMER_PRODUCT_SIZE_RANGE'] = [
             [int(self.amplicon_length * (1 - self.max_variation / 2)), int(self.amplicon_length * (1 + self.max_variation / 2))]]
         p3_global_args['PRIMER_NUM_RETURN'] = self.max_candidates
+        """
 
         # Run digestSeq until unique primers are found
         hit_left_limit = False
         while True:
-            # Slice primary reference
-            #seq = str(self.primaryReference.seq[chunk_start:chunk_end])
-            #p3_seq_args['SEQUENCE_TEMPLATE'] = seq
-            #p3_seq_args['SEQUENCE_INCLUDED_REGION'] = [0, len(seq) - 1]
-            #p3_seq_args['SEQUENCE_PRIMER'] = 'TCTTTTGTGTGCGAATAACTATGAGGA'
-            #print(p3_seq_args['SEQUENCE_TEMPLATE'], p3_seq_args['SEQUENCE_INCLUDED_REGION'])
             logger.info("Region %i: reference chunk %i:%i, length %i" %(region_num, chunk_start, chunk_end, chunk_end-chunk_start))
-            #primer3_output = primer3.bindings.designPrimers(p3_seq_args, p3_global_args)
-            #pprint(primer3_output)
+            """
+            #Slice primary reference
+            seq = str(self.primaryReference.seq[chunk_start:chunk_end])
+            p3_seq_args['SEQUENCE_TEMPLATE'] = seq
+            p3_seq_args['SEQUENCE_INCLUDED_REGION'] = [0, len(seq) - 1]
+            p3_seq_args['SEQUENCE_PRIMER'] = 'TCTTTTGTGTGCGAATAACTATGAGGA'
+            print(p3_seq_args['SEQUENCE_TEMPLATE'], p3_seq_args['SEQUENCE_INCLUDED_REGION'])
+            primer3_output = primer3.bindings.designPrimers(p3_seq_args, p3_global_args)
+            pprint(primer3_output)
+            """
 
             #Digest the references (except the consensus) into candidatePrimers
             allKmers = set()
@@ -172,55 +179,43 @@ class poaMultiplexScheme(object):
                 for k in range(22, 30+1):
                     allKmers.update(self.digestSeq(k, chunk_start, seq))
 
-            #Filter for valid start and end position
-            #fwdPos = [p for p in allKmers if p.startEnd('fwd')[0] >= chunk_start and p.startEnd('fwd')[1] <= chunk_start+40]
-            #revPos = [p for p in allKmers if p.startEnd('rev')[0] <= chunk_end and p.startEnd('rev')[1] >= chunk_end-40]
-            fwdPos = [_candidatePrimer(k[0], k[1], 'fwd') for k in allKmers if chunk_start <= _candidatePrimer(k[0], k[1], 'fwd').start < chunk_start+40]
-            revPos = [_candidatePrimer(k[0], k[1], 'rev') for k in allKmers if chunk_end-40 <= _candidatePrimer(k[0], k[1], 'rev').start < chunk_end]
-            #print(vars([p for p in fwdPos if p.seq == 'AGAATTTTTAGGATCTTTTGTGTGCGA'][0]))
-            #print(vars([p for p in revPos if p.seq == 'GGGTTGTTGAATCTCCAATCCTCT'][0]))
+            #Filter out non-ACGT k-mers
+            filtKmers = [k for k in allKmers if self.dnaBases(k[1])]
+
+            #Filter for valid start position only
+            fwdPos = [k for k in filtKmers if chunk_start <= k[0] < chunk_start+40]
+            revPos = [k for k in filtKmers if chunk_end-40 <= k[0]+len(k[1]) < chunk_end]
+
+            #Generate _candidatePrimers
+            fwdCandidates = [_candidatePrimer(k[0], k[1], 'fwd', self.references[1:]) for k in fwdPos]
+            revCandidates = [_candidatePrimer(k[0], k[1], 'rev', self.references[1:]) for k in revPos]
 
             #Perform the hard filtering
-            fwdThermo = [p for p in fwdPos if (30 <= p.gc <= 55) and (60 <= p.tm <= 63) and (p.hairpin <= 50.0) and (p.maxPoly <= 5)]
-            revThermo = [p for p in revPos if (30 <= p.gc <= 55) and (60 <= p.tm <= 63) and (p.hairpin <= 50.0) and (p.maxPoly <= 5)]
+            fwdThermo = [p for p in fwdCandidates if (30 <= p.gc <= 55) and (60 <= p.tm <= 63) and (p.hairpin <= 50.0) and (p.maxPoly <= 5)]
+            revThermo = [p for p in revCandidates if (30 <= p.gc <= 55) and (60 <= p.tm <= 63) and (p.hairpin <= 50.0) and (p.maxPoly <= 5)]
+            logger.info("Region %i: current position returned %i left and %i right candidate primers" %(region_num, len(fwdThermo), len(revThermo)))
 
             #Filter for valid length
             pairs = [_primerPair(f,r) for f in fwdThermo for r in revThermo if 380 <= _primerPair(f,r).productLength <= 420]
-            logger.info("Region %i: current position returned %i left and %i right candidate primers" %(region_num, len(fwdThermo), len(revThermo)))
             logger.info("Region %i: current position returned %i candidate primer pairs" %(region_num, len(pairs)))
 
             if pairs:
-                #Sort pairs on left ref coverage, right ref coverage
                 #Sort pairs on pairPenalty
                 scoredPairs = [_candidatePrimerPair(p.left, p.right) for p in pairs]
                 sortPairs = sorted(scoredPairs, key=lambda x: x.pairPenalty)
-                #sortPairs = [p for p in scoredPairs if p.left.seq == 'AGAATTTTTAGGATCTTTTGTGTGCGA' and p.right.seq == 'GGGTTGTTGAATCTCCAATCCTCT']
-                #sortPairs = sorted(scoredPairs, key=lambda x: (len(x.left.queryMatch(self.references[1:])), len(x.right.queryMatch(self.references[1:]))), reverse=True)
-                #print('top pair', len(sortPairs[0].left.queryMatch(self.references[1:])), len(sortPairs[0].right.queryMatch(self.references[1:])))
-                print(sorted([p.pairPenalty for p in sortPairs][:5]))
 
-                #pprint(vars(sortPairs[0]))
-                #print(sortPairs[0].productLength)
-                #pprint(vars(sortPairs[0].left))
-                #pprint(vars(sortPairs[0].right))
-
-                #print('gc', sortPairs[0].left.gc, sortPairs[0].right.gc)
-                #print('hairpin', sortPairs[0].left.hairpin, sortPairs[0].right.hairpin)
-                #print('homodimer', sortPairs[0].left.homodimer, sortPairs[0].right.homodimer)
-                #print('tm', sortPairs[0].left.tm, sortPairs[0].right.tm)
 
                 #Get list of alts or None if failed to cover all references
-                leftAlts = sortPairs[0].fwdAlts(self.references, pairs, sortPairs)
-                rightAlts = sortPairs[0].revAlts(self.references, pairs, sortPairs)
-                print(leftAlts)
-                print(rightAlts)
+                if len(sortPairs[0].left.refCov) < len(self.references[1:]):
+                    leftAlts = sortPairs[0].fwdAlts(self.references, pairs, sortPairs)
+                if len(sortPairs[0].left.refCov) < len(self.references[1:]):
+                    rightAlts = sortPairs[0].revAlts(self.references, pairs, sortPairs)
 
                 #If there is a list of alts return (even if empty)
-                if not leftAlts == None:
+                if not leftAlts == None and not rightAlts == None:
                     print('left alts', len(leftAlts), [len(p.queryMatch(self.references[1:])) for p in leftAlts])
-                    if not rightAlts == None:
-                        print('right alts', len(rightAlts), [len(p.queryMatch(self.references[1:])) for p in rightAlts])
-                        return _region(region_num, chunk_start, sortPairs, leftAlts, rightAlts, self.references, self.prefix, self.max_alts)
+                    print('right alts', len(rightAlts), [len(p.queryMatch(self.references[1:])) for p in rightAlts])
+                    return _region(region_num, chunk_start, sortPairs, leftAlts, rightAlts, self.references, self.prefix, self.max_alts)
 
             # Move right if first region or to open gap
             if region_num == 1 or hit_left_limit:
