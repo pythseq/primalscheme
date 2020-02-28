@@ -204,11 +204,12 @@ class poaMultiplexScheme(object):
                 scoredPairs = [_candidatePrimerPair(p.left, p.right) for p in pairs]
                 sortPairs = sorted(scoredPairs, key=lambda x: x.pairPenalty)
 
-
+                leftAlts=[]
+                rightAlts=[]
                 #Get list of alts or None if failed to cover all references
                 if len(sortPairs[0].left.refCov) < len(self.references[1:]):
                     leftAlts = sortPairs[0].fwdAlts(self.references, pairs, sortPairs)
-                if len(sortPairs[0].left.refCov) < len(self.references[1:]):
+                if len(sortPairs[0].right.refCov) < len(self.references[1:]):
                     rightAlts = sortPairs[0].revAlts(self.references, pairs, sortPairs)
 
                 #If there is a list of alts return (even if empty)
