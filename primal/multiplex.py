@@ -203,14 +203,25 @@ class poaMultiplexScheme(object):
                 #Sort pairs on pairPenalty
                 scoredPairs = [_candidatePrimerPair(p.left, p.right) for p in pairs]
                 sortPairs = sorted(scoredPairs, key=lambda x: x.pairPenalty)
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
 
                 leftAlts=[]
                 rightAlts=[]
                 #Get list of alts or None if failed to cover all references
+=======
+>>>>>>> Stashed changes
+=======
+>>>>>>> Stashed changes
                 if len(sortPairs[0].left.refCov) < len(self.references[1:]):
                     leftAlts = sortPairs[0].fwdAlts(self.references, pairs, sortPairs)
                 if len(sortPairs[0].right.refCov) < len(self.references[1:]):
                     rightAlts = sortPairs[0].revAlts(self.references, pairs, sortPairs)
+                region = _candidateRegion(sortPairs)
+                #Iteratively get pairs until all references are covered
+                while True:
+                    #Get list of alts or None if failed to cover all references
+
 
                 #If there is a list of alts return (even if empty)
                 if not leftAlts == None and not rightAlts == None:

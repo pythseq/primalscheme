@@ -199,6 +199,21 @@ class _candidatePrimerPair(_primerPair):
     def productLength(self):
         return self.right.start - self.left.start + 1
 
+class _candidateRegion(object):
+    """A region that forms part of a scheme."""
+    def __init__(self, sortedPairs, fwdAlternates, revAlternates):
+        self.candidatePairs = candidatePairs
+        self.fwdAlternates = []
+        self.revAlternates = []
+        self.regionPenalty = self.topPair.pairPenalty
+        for fwdAlt in self.fwdAlternates:
+            self.regionPenalty += fwdAlt.penalty
+        for revAlt in self.revAlternates:
+            self.regionPenalty += revAlt.penalty
+
+    @property
+    def topPair(self):
+        return self.candidatePairs[0]
 
 class _region(object):
     """A region that forms part of a scheme."""
