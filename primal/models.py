@@ -65,11 +65,11 @@ class _candidatePrimer(_primer):
         #Length low
         if self.length < settings.global_args['PRIMER_OPT_SIZE']:
             self.penalty += settings.global_args['PRIMER_WT_SIZE_LT'] * (settings.global_args['PRIMER_OPT_SIZE'] - self.length)
-        #Reference coverage
+        #Reference mismatches
         if len(self.refCov) < len(references):
-            self.penalty += 1.0 * (len(references) - len(self.refCov))
+            self.penalty += 3.0 * (len(references) - len(self.refCov))
         """
-        #All of the default weights are 0 so ignore
+        #All of the default weights are 0 so don't calculate
         #Homodimer
         if (self.tm - 5) <= self.homodimer('fwd'):
             self.penalty += settings.global_args['PRIMER_WT_SELF_ANY_TH'] * (self.homodimer('fwd') - (self.tm - 5 - 1))
@@ -160,7 +160,7 @@ class _candidatePrimerPair(_primerPair):
     def endStability(self):
         return calcEndStability(self.left.seq, self.right.revComp._data, mv_conc=50, dv_conc=1.5, dntp_conc=0.6).tm
 
-    def fwdAlts(self, references, pairs, sortPairs, max_alts=5):
+    def fwdAlts(self, references, pairs, sortPairs):
         #Update set of refs covered
         fwdCov = set(self.left.refCov) #set(self.left.queryMatch(references[1:]))
         leftAlts = []
@@ -168,7 +168,7 @@ class _candidatePrimerPair(_primerPair):
         while len(fwdCov) < len(references):
             #Refs not covered
             fwdReq = [r for r in references if r.id not in fwdCov]
-            #Alts with valid length product
+            #Alts with valid position and Length
             fwdAlts = [p.left for p in pairs if p.right == sortPairs[0].right]
             #Sort alts on required refs then all refs
             sortFwdAlts = sorted(fwdAlts, key=lambda x: (len(x.queryMatch(fwdReq)), len(x.queryMatch(references))), reverse=True)
@@ -201,15 +201,18 @@ class _candidatePrimerPair(_primerPair):
 
 class _candidateRegion(object):
     """A region that forms part of a scheme."""
-    def __init__(self, sortedPairs, fwdAlternates, revAlternates):
-        self.candidatePairs = candidatePairs
+    def __init__(self, sortedPairs):
+        self.sortedPairs = sortedPairs
+        #Might need to be scaled somehow
+        self.regionPenalty = sum([pair.pairPenalty for pair in self.sortedPairs]) / len(sortedPairs)
+        """
         self.fwdAlternates = []
         self.revAlternates = []
-        self.regionPenalty = self.topPair.pairPenalty
         for fwdAlt in self.fwdAlternates:
             self.regionPenalty += fwdAlt.penalty
         for revAlt in self.revAlternates:
             self.regionPenalty += revAlt.penalty
+        """
 
     @property
     def topPair(self):

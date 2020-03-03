@@ -34,9 +34,8 @@ def multiplex(args):
 
 def poaMultiplex(args):
     #print(args)
-    scheme = poaMultiplexReporter(args.references, args.amplicon_length, min_overlap=args.min_overlap, max_gap=args.max_gap,
-                             max_alts=args.max_alts, max_candidates=args.max_candidates, step_size=args.step_size,
-                             max_variation=args.max_variation, prefix=args.prefix)
+    scheme = poaMultiplexReporter(args.references, ampliconLength=args.amplicon_length, minOverlap=args.min_overlap, maxGap=args.max_gap,
+                            maxVariation=args.max_variation, prefix=args.prefix)
     scheme.write_bed(args.output_path)
     scheme.write_pickle(args.output_path)
     scheme.write_tsv(args.output_path)
@@ -82,9 +81,6 @@ def main():
     parser_scheme.add_argument('--amplicon-length', help='Amplicon length (default: %(default)i)', type=int, default=400)
     parser_scheme.add_argument('--min-overlap', help='Minimum overlap length (default: %(default)i)', type=int, default=0)
     parser_scheme.add_argument('--max-gap', help='Maximum gap to introduce before failing (default: %(default)i)', type=int, default=200)
-    parser_scheme.add_argument('--max-alts', help='Maximum number of alternate primers to output (default: %(default)i)', type=int, default=2)
-    parser_scheme.add_argument('--max-candidates', help='Maximum candidate primers (default: %(default)i)', type=int, default=10)
-    parser_scheme.add_argument('--step-size', help='Step size when moving left or right (default: %(default)i)', type=int, default=11)
     parser_scheme.add_argument('--max-variation', help='Variation in allowed product length (default: %(default)i)', type=float, default=0.1)
     parser_scheme.add_argument('--output-path', help='Output directory to save files (default: %(default)s)', default='./')
     parser_scheme.add_argument('--force', help='Force overwrite', action="store_true")

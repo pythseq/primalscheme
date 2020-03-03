@@ -2,7 +2,7 @@ import logging
 import primer3
 from primal import settings
 from .exceptions import MaxGapReached, NoSuitablePrimers
-from .models import _primer, _primerPair, _candidatePrimer, _candidatePrimerPair, _region
+from .models import _primer, _primerPair, _region, _candidatePrimer, _candidatePrimerPair, _candidateRegion
 from Bio.Align import MultipleSeqAlignment
 import sys
 from itertools import product
@@ -13,19 +13,15 @@ logger = logging.getLogger('Primal Log')
 class poaMultiplexScheme(object):
     """A complete multiplex primer scheme."""
 
-    def __init__(self, references, amplicon_length, min_overlap, max_gap, max_alts, max_candidates,
-                 step_size, max_variation, prefix='PRIMAL_SCHEME'):
+    def __init__(self, references, ampliconLength, minOverlap, maxGap, maxVariation, prefix='PRIMAL_SCHEME'):
         self.references = references
-        self.amplicon_length = amplicon_length
-        self.min_overlap = min_overlap
-        self.max_gap = max_gap
-        self.max_alts = max_alts
-        self.max_candidates = max_candidates
-        self.step_size = step_size
-        self.max_variation = max_variation
+        self.ampliconLength = ampliconLength
+        self.maxVariation = maxVariation
+        self.minOverlap = minOverlap
+        self.maxGap = maxGap
+        self.stepSize = int((self.ampliconLength * self.maxVariation) - settings.global_args['PRIMER_MAX_SIZE'])
         self.prefix = prefix
         self.regions = []
-
         self.run()
 
     @property
@@ -65,11 +61,11 @@ class poaMultiplexScheme(object):
                 left_primer_left_limit = 0
 
             # Right start limit maintains the minimum_overlap
-            left_primer_right_limit = prev_pair.right.end - self.min_overlap - 1 if prev_pair else self.max_gap
+            left_primer_right_limit = prev_pair.right.end - self.minOverlap - 1 if prev_pair else self.maxGap
 
             # Last region if less than one amplicon length remaining
             if prev_pair:
-                if (len(self.primaryReference) - prev_pair.right.end) < self.amplicon_length:
+                if (len(self.primaryReference) - prev_pair.right.end) < self.ampliconLength:
                     is_last_region = True
                     logger.debug('Region {}: is last region'.format(region_num))
 
@@ -136,15 +132,15 @@ class poaMultiplexScheme(object):
         # Calculate where to slice the reference
         if region_num == 1:
             chunk_start = 0
-            chunk_end = int((1 + self.max_variation / 2) * self.amplicon_length)
+            chunk_end = int((1 + self.maxVariation / 2) * self.ampliconLength)
         elif is_last_region:
             # Last region work backwards
-            chunk_start = int(len(self.primaryReference) - ((1 + self.max_variation / 2) * self.amplicon_length))
+            chunk_start = int(len(self.primaryReference) - ((1 + self.maxVariation / 2) * self.ampliconLength))
             chunk_end = len(self.primaryReference)
         else:
             # Start is right limit - delta min/max product length - max primer length
-            chunk_start = int(left_primer_right_limit - (self.max_variation * self.amplicon_length) - settings.global_args['PRIMER_MAX_SIZE'])
-            chunk_end = int(chunk_start + ((1 + self.max_variation/2) * self.amplicon_length))
+            chunk_start = int(left_primer_right_limit - (self.maxVariation * self.ampliconLength) - settings.global_args['PRIMER_MAX_SIZE'])
+            chunk_end = int(chunk_start + ((1 + self.maxVariation/2) * self.ampliconLength))
         initial_chunk_start = chunk_start
         initial_chunk_end = chunk_end
 
@@ -153,7 +149,7 @@ class poaMultiplexScheme(object):
         p3_global_args = settings.global_args
         p3_seq_args = settings.seq_args
         p3_global_args['PRIMER_PRODUCT_SIZE_RANGE'] = [
-            [int(self.amplicon_length * (1 - self.max_variation / 2)), int(self.amplicon_length * (1 + self.max_variation / 2))]]
+            [int(self.ampliconLength * (1 - self.maxVariation / 2)), int(self.ampliconLength * (1 + self.maxVariation / 2))]]
         p3_global_args['PRIMER_NUM_RETURN'] = self.max_candidates
         """
 
@@ -166,7 +162,6 @@ class poaMultiplexScheme(object):
             seq = str(self.primaryReference.seq[chunk_start:chunk_end])
             p3_seq_args['SEQUENCE_TEMPLATE'] = seq
             p3_seq_args['SEQUENCE_INCLUDED_REGION'] = [0, len(seq) - 1]
-            p3_seq_args['SEQUENCE_PRIMER'] = 'TCTTTTGTGTGCGAATAACTATGAGGA'
             print(p3_seq_args['SEQUENCE_TEMPLATE'], p3_seq_args['SEQUENCE_INCLUDED_REGION'])
             primer3_output = primer3.bindings.designPrimers(p3_seq_args, p3_global_args)
             pprint(primer3_output)
@@ -176,7 +171,8 @@ class poaMultiplexScheme(object):
             allKmers = set()
             for ref in self.references[1:]:
                 seq = str(ref.seq[chunk_start:chunk_end])
-                for k in range(22, 30+1):
+                #print(seq)
+                for k in range(settings.global_args['PRIMER_MIN_SIZE'], settings.global_args['PRIMER_MAX_SIZE'] + 1):
                     allKmers.update(self.digestSeq(k, chunk_start, seq))
 
             #Filter out non-ACGT k-mers
@@ -203,37 +199,30 @@ class poaMultiplexScheme(object):
                 #Sort pairs on pairPenalty
                 scoredPairs = [_candidatePrimerPair(p.left, p.right) for p in pairs]
                 sortPairs = sorted(scoredPairs, key=lambda x: x.pairPenalty)
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
 
+                #Check region penalty
+                region = _candidateRegion(sortPairs)
+                print(region.regionPenalty)
+
+                #Get list of alts or None if failed to cover all references
                 leftAlts=[]
                 rightAlts=[]
-                #Get list of alts or None if failed to cover all references
-=======
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
                 if len(sortPairs[0].left.refCov) < len(self.references[1:]):
-                    leftAlts = sortPairs[0].fwdAlts(self.references, pairs, sortPairs)
+                    leftAlts = sortPairs[0].fwdAlts(self.references[1:], pairs, sortPairs)
                 if len(sortPairs[0].right.refCov) < len(self.references[1:]):
-                    rightAlts = sortPairs[0].revAlts(self.references, pairs, sortPairs)
-                region = _candidateRegion(sortPairs)
-                #Iteratively get pairs until all references are covered
-                while True:
-                    #Get list of alts or None if failed to cover all references
-
+                    rightAlts = sortPairs[0].revAlts(self.references[1:], pairs, sortPairs)
 
                 #If there is a list of alts return (even if empty)
                 if not leftAlts == None and not rightAlts == None:
                     print('left alts', len(leftAlts), [len(p.queryMatch(self.references[1:])) for p in leftAlts])
                     print('right alts', len(rightAlts), [len(p.queryMatch(self.references[1:])) for p in rightAlts])
-                    return _region(region_num, chunk_start, sortPairs, leftAlts, rightAlts, self.references, self.prefix, self.max_alts)
+                    return _region(region_num, chunk_start, sortPairs, leftAlts, rightAlts, self.references, self.prefix)
 
             # Move right if first region or to open gap
             if region_num == 1 or hit_left_limit:
                 logger.debug("Region %i: stepping right, position %i" %(region_num, chunk_start))
-                chunk_start += self.step_size
-                chunk_end += self.step_size
+                chunk_start += self.stepSize
+                chunk_end += self.stepSize
                 # Hit end of regerence
                 if chunk_end > len(self.primaryReference):
                     logger.debug("Region %i: hit right limit %i" %(region_num, len(self.primaryReference)))
@@ -241,8 +230,8 @@ class poaMultiplexScheme(object):
             else:
                 # Move left for all other regions
                 logger.debug("Region %i: stepping left, position %i, limit %s" %(region_num, chunk_start, left_primer_left_limit))
-                chunk_start -= self.step_size
-                chunk_end -= self.step_size
+                chunk_start -= self.stepSize
+                chunk_end -= self.stepSize
                 if chunk_start <= left_primer_left_limit:
                     # Switch direction to open gap
                     logger.debug("Region %i: hit left limit" %(region_num))

@@ -35,22 +35,6 @@ seq_args = {
     'SEQUENCE_PRIMER_PAIR_OK_REGION_LIST': [-1, -1, -1, -1],
     }
 
-MATCHES = [
-    set(['A', 'T']),
-    set(['C', 'G']),
-    set(['G', 'T']),
-    set(['C', 'T']),
-    set(['T', 'T'])
-],
-
-MISMATCHES = [
-    set(['A', 'A']),
-    set(['A', 'C']),
-    set(['C', 'C']),
-    set(['G', 'A']),
-    set(['G', 'G']),
-]
-
 NATIVE_DICT = {
     'NB01': 'AAGAAAGTTGTCGGTGTCTTTGTG',
     'NB02': 'TCGATTCCGTTTGTAGTCGTCTGT',
@@ -66,9 +50,8 @@ NATIVE_DICT = {
     'NB12': 'CAGGTAGAAAGAAGCAGAATCGGA',
 }
 
-SISPA_PRIMER = 'TTAACCGGCAGTGACACTGC'
+NEB_SSP = 'AAGCAGTGGTATCAACGCAGAGT'
 
-RLBseq = 'TTTTTCGTGCGCCGCTTCAAC'
 
 # Length 22, 30, 24.43
 # Tm 59.96, 62.72, 61.33
