@@ -4,6 +4,8 @@ from primal import settings
 from .exceptions import MaxGapReached, NoSuitablePrimers
 from .models import _primer, _primerPair, _region, _candidatePrimer, _candidatePrimerPair, _candidateRegion
 from Bio.Align import MultipleSeqAlignment
+from Bio.Seq import Seq
+from Bio.SeqRecord import SeqRecord
 import sys
 from itertools import product
 from pprint import pprint
@@ -166,10 +168,13 @@ class poaMultiplexScheme(object):
             primer3_output = primer3.bindings.designPrimers(p3_seq_args, p3_global_args)
             pprint(primer3_output)
             """
+            #Print alignments (max 50 cols)
+            align = MultipleSeqAlignment([*self.references])
+            region = _candidateRegion(args.basesPer, chunk_start, chunk_end)
 
             #Digest the references (except the consensus) into candidatePrimers
             allKmers = set()
-            for ref in self.references[1:]:
+            for ref in self.references[:-2]:
                 seq = str(ref.seq[chunk_start:chunk_end])
                 #print(seq)
                 for k in range(settings.global_args['PRIMER_MIN_SIZE'], settings.global_args['PRIMER_MAX_SIZE'] + 1):
@@ -183,8 +188,8 @@ class poaMultiplexScheme(object):
             revPos = [k for k in filtKmers if chunk_end-40 <= k[0]+len(k[1]) < chunk_end]
 
             #Generate _candidatePrimers
-            fwdCandidates = [_candidatePrimer(k[0], k[1], 'fwd', self.references[1:]) for k in fwdPos]
-            revCandidates = [_candidatePrimer(k[0], k[1], 'rev', self.references[1:]) for k in revPos]
+            fwdCandidates = [_candidatePrimer(k[0], k[1], 'fwd', self.references[:-2]) for k in fwdPos]
+            revCandidates = [_candidatePrimer(k[0], k[1], 'rev', self.references[:-2]) for k in revPos]
 
             #Perform the hard filtering
             fwdThermo = [p for p in fwdCandidates if (30 <= p.gc <= 55) and (60 <= p.tm <= 63) and (p.hairpin <= 50.0) and (p.maxPoly <= 5)]
@@ -199,23 +204,28 @@ class poaMultiplexScheme(object):
                 #Sort pairs on pairPenalty
                 scoredPairs = [_candidatePrimerPair(p.left, p.right) for p in pairs]
                 sortPairs = sorted(scoredPairs, key=lambda x: x.pairPenalty)
+                print(sortPairs[0].left.seq, sortPairs[0].left.start, sortPairs[0].left.end)
+                print(align[:, sortPairs[0].left.start:sortPairs[0].left.end])
+                print(sortPairs[0].right.revComp(sortPairs[0].right.seq), sortPairs[0].right.end, sortPairs[0].right.start)
+                print(align[:, sortPairs[0].right.end:sortPairs[0].right.start])
 
                 #Check region penalty
-                region = _candidateRegion(sortPairs)
-                print(region.regionPenalty)
+
+                #region = _candidateRegion(args.basesPer, sortPairs)
+                #print(region.regionPenalty)
 
                 #Get list of alts or None if failed to cover all references
                 leftAlts=[]
                 rightAlts=[]
-                if len(sortPairs[0].left.refCov) < len(self.references[1:]):
-                    leftAlts = sortPairs[0].fwdAlts(self.references[1:], pairs, sortPairs)
-                if len(sortPairs[0].right.refCov) < len(self.references[1:]):
-                    rightAlts = sortPairs[0].revAlts(self.references[1:], pairs, sortPairs)
+                if len(sortPairs[0].left.refCov) < len(self.references[:-2]):
+                    leftAlts = sortPairs[0].fwdAlts(self.references[:-2], pairs)
+                if len(sortPairs[0].right.refCov) < len(self.references[:-2]):
+                    rightAlts = sortPairs[0].revAlts(self.references[:-2], pairs)
 
                 #If there is a list of alts return (even if empty)
                 if not leftAlts == None and not rightAlts == None:
-                    print('left alts', len(leftAlts), [len(p.queryMatch(self.references[1:])) for p in leftAlts])
-                    print('right alts', len(rightAlts), [len(p.queryMatch(self.references[1:])) for p in rightAlts])
+                    print('left alts', len(leftAlts), [len(p.queryMatch(self.references[:-2])) for p in leftAlts])
+                    print('right alts', len(rightAlts), [len(p.queryMatch(self.references[:-2])) for p in rightAlts])
                     return _region(region_num, chunk_start, sortPairs, leftAlts, rightAlts, self.references, self.prefix)
 
             # Move right if first region or to open gap

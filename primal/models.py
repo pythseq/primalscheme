@@ -3,6 +3,7 @@ import sys
 import logging
 from primal import settings
 from itertools import groupby
+from operator import itemgetter
 
 from Bio.Seq import Seq
 from primer3 import calcTm, calcHairpin, calcHomodimer, calcHeterodimer
@@ -35,7 +36,6 @@ class _candidatePrimer(_primer):
 
     def __init__(self, position, seq, direction, references):
         super(_candidatePrimer, self).__init__(position, seq, direction)
-        self.penalty = 0
         self.refCov = self.queryMatch(references)
         self.calcPenalty(references)
 
@@ -45,9 +45,15 @@ class _candidatePrimer(_primer):
     def __hash__(self):
         return hash(self.seq)
 
+    def recalcPenalty(self, references):
+        self.refCov = self.queryMatch(references)
+        self.calcPenalty(references)
+        return self
+
     def calcPenalty(self, references):
         #As per penalty routine described in http://primer3.ut.ee/primer3web_help.htm
         #Tm high
+        self.penalty = 0
         if self.tm > settings.global_args['PRIMER_OPT_TM']:
             self.penalty += settings.global_args['PRIMER_WT_TM_GT'] * (self.tm - settings.global_args['PRIMER_OPT_TM'])
         #Tm low
@@ -67,7 +73,7 @@ class _candidatePrimer(_primer):
             self.penalty += settings.global_args['PRIMER_WT_SIZE_LT'] * (settings.global_args['PRIMER_OPT_SIZE'] - self.length)
         #Reference mismatches
         if len(self.refCov) < len(references):
-            self.penalty += 3.0 * (len(references) - len(self.refCov))
+            self.penalty += 3 * (len(references) - len(self.refCov))
         """
         #All of the default weights are 0 so don't calculate
         #Homodimer
@@ -160,18 +166,18 @@ class _candidatePrimerPair(_primerPair):
     def endStability(self):
         return calcEndStability(self.left.seq, self.right.revComp._data, mv_conc=50, dv_conc=1.5, dntp_conc=0.6).tm
 
-    def fwdAlts(self, references, pairs, sortPairs):
+    def fwdAlts(self, references, pairs):
         #Update set of refs covered
-        fwdCov = set(self.left.refCov) #set(self.left.queryMatch(references[1:]))
+        fwdCov = set(self.left.refCov)
         leftAlts = []
         #Generate left alts
         while len(fwdCov) < len(references):
             #Refs not covered
             fwdReq = [r for r in references if r.id not in fwdCov]
-            #Alts with valid position and Length
-            fwdAlts = [p.left for p in pairs if p.right == sortPairs[0].right]
-            #Sort alts on required refs then all refs
-            sortFwdAlts = sorted(fwdAlts, key=lambda x: (len(x.queryMatch(fwdReq)), len(x.queryMatch(references))), reverse=True)
+            #Recalculate coverage and penalty
+            fwdAlts = [p.left.recalcPenalty(fwdReq) for p in pairs]
+            #Sort alts on refs coverage then on penalty
+            sortFwdAlts = sorted(fwdAlts, key=lambda x:(-len(x.refCov), x.penalty))
             #Store alts
             leftAlts.append(sortFwdAlts[0])
             #Update refs covered
@@ -181,13 +187,13 @@ class _candidatePrimerPair(_primerPair):
                 return None
         return leftAlts
 
-    def revAlts(self, references, pairs, sortPairs):
-        revCov = set(self.right.refCov) #set(sortPairs[0].right.queryMatch(references[1:]))
+    def revAlts(self, references, pairs):
+        revCov = set(self.right.refCov)
         rightAlts = []
         while len(revCov) < len(references):
             revReq = [r for r in references if r.id not in revCov]
-            revAlts = [p.right for p in pairs if p.left == sortPairs[0].left]
-            sortRevAlts = sorted(revAlts, key=lambda x: (len(x.queryMatch(revReq)), len(x.queryMatch(references))), reverse=True)
+            revAlts = [p.right.recalcPenalty(revReq) for p in pairs]
+            sortRevAlts = sorted(revAlts, key=lambda x:(-len(x.refCov), x.penalty))
             rightAlts.append(sortRevAlts[0])
             lastCov = len(revCov)
             revCov.update(sortRevAlts[0].queryMatch(references))
@@ -199,20 +205,26 @@ class _candidatePrimerPair(_primerPair):
     def productLength(self):
         return self.right.start - self.left.start + 1
 
+        """
 class _candidateRegion(object):
-    """A region that forms part of a scheme."""
+    #A region that forms part of a scheme.
     def __init__(self, sortedPairs):
         self.sortedPairs = sortedPairs
         #Might need to be scaled somehow
         self.regionPenalty = sum([pair.pairPenalty for pair in self.sortedPairs]) / len(sortedPairs)
+        #self.fwdAlternates = []
+        #self.revAlternates = []
+        #for fwdAlt in self.fwdAlternates:
+        #self.regionPenalty += fwdAlt.penalty
+        #for revAlt in self.revAlternates:
+        #    self.regionPenalty += revAlt.penalty
         """
-        self.fwdAlternates = []
-        self.revAlternates = []
-        for fwdAlt in self.fwdAlternates:
-            self.regionPenalty += fwdAlt.penalty
-        for revAlt in self.revAlternates:
-            self.regionPenalty += revAlt.penalty
-        """
+class _candidateRegion(object):
+    """A region that forms part of a scheme."""
+    def __init__(self, basesPer, chunk_start, chunk_end):
+        #self.sortedPairs = sortedPairs
+        #Might need to be scaled somehow
+        self.regionPenalty = basesPer
 
     @property
     def topPair(self):

@@ -30,12 +30,12 @@ class poaMultiplexReporter(poaMultiplexScheme):
             for r in self.regions:
                 left = r.topPair.left
                 right = r.topPair.right
-                print(*map(str, [left.name, r.pool, left.seq, left.length, '%.2f' %left.gc, '%.2f' %left.tm]), sep='\t', file=tsvhandle)
+                print(*map(str, [left.name, r.pool, left.start, left.seq, left.length, '%.2f' %left.gc, '%.2f' %left.tm]), sep='\t', file=tsvhandle)
                 for alt in r.fwdAlternates:
-                    print(*map(str, [alt.name, r.pool, alt.seq, alt.length, '%.2f' %alt.gc, '%.2f' %alt.tm]), sep='\t', file=tsvhandle)
-                print(*map(str, [right.name, r.pool, right.seq, right.length, '%.2f' %right.gc, '%.2f' %right.tm]), sep='\t', file=tsvhandle)
+                    print(*map(str, [alt.name, r.pool, alt.start, alt.seq, alt.length, '%.2f' %alt.gc, '%.2f' %alt.tm]), sep='\t', file=tsvhandle)
+                print(*map(str, [right.name, r.pool, alt.start, right.seq, right.length, '%.2f' %right.gc, '%.2f' %right.tm]), sep='\t', file=tsvhandle)
                 for alt in r.revAlternates:
-                    print(*map(str, [alt.name, r.pool, alt.seq, alt.length, '%.2f' %alt.gc, '%.2f' %alt.tm]), sep='\t', file=tsvhandle)
+                    print(*map(str, [alt.name, r.pool, right.start, alt.seq, alt.length, '%.2f' %alt.gc, '%.2f' %alt.tm]), sep='\t', file=tsvhandle)
 
     def write_SMARTplex(self, path='./'):
         logger.info('Writing SMARTplex')

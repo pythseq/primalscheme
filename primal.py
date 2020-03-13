@@ -101,16 +101,30 @@ def main():
     # Generate args
     args = parser.parse_args()
     args.references = []
+    args.conserved = []
     #args.consensus = []
     if parser.parse_args().command == 'poa-multiplex':
         for line in open(args.poa, 'r'):
             cols = line.strip().split()
-            if cols[0] == 'Consensus0':
-                args.references.insert(0, (SeqRecord(Seq(cols[1], generic_dna), id=cols[0], name='', description='')))
+            args.references.append(SeqRecord(Seq(cols[1], generic_dna), id=cols[0], name='', description=''))
+        align = MultipleSeqAlignment([*args.references])
+        cigar = ''
+        basesPer = [0] * align.get_alignment_length()
+        for i in range(align.get_alignment_length()):
+            num = len(set(align[:-1, i]))
+            basesPer[i] = num
+            if num == 1:
+                cigar += '*'
             else:
-                args.references.append(SeqRecord(Seq(cols[1], generic_dna), id=cols[0], name='', description=''))
-    align = MultipleSeqAlignment([*args.references])
-    print(align)
+                cigar += ' '
+        cigar = SeqRecord(Seq(cigar), id='cigar')
+        args.references.append(cigar)
+        args.basesPer = basesPer
+        print(sum(basesPer)/len(basesPer))
+        sys.exit()
+        #align.append(cigar)
+
+
     #else:
     #    for record in SeqIO.parse(open(args.fasta, 'r'), 'fasta'):
     #        args.references.append(SeqRecord(Seq(str(record.seq).replace('-', '').upper()), id=record.id, description=record.id))
