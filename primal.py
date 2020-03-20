@@ -35,7 +35,7 @@ def multiplex(args):
 def poaMultiplex(args):
     #print(args)
     scheme = poaMultiplexReporter(args.references, ampliconLength=args.amplicon_length, minOverlap=args.min_overlap, maxGap=args.max_gap,
-                            maxVariation=args.max_variation, prefix=args.prefix)
+                            maxVariation=args.max_variation, basesPer=args.basesPer, prefix=args.prefix)
     scheme.write_bed(args.output_path)
     scheme.write_pickle(args.output_path)
     scheme.write_tsv(args.output_path)
@@ -121,7 +121,7 @@ def main():
         args.references.append(cigar)
         args.basesPer = basesPer
         print(sum(basesPer)/len(basesPer))
-        sys.exit()
+        #sys.exit()
         #align.append(cigar)
 
 

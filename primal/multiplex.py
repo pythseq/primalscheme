@@ -15,10 +15,11 @@ logger = logging.getLogger('Primal Log')
 class poaMultiplexScheme(object):
     """A complete multiplex primer scheme."""
 
-    def __init__(self, references, ampliconLength, minOverlap, maxGap, maxVariation, prefix='PRIMAL_SCHEME'):
+    def __init__(self, references, ampliconLength, minOverlap, maxGap, maxVariation, basesPer, prefix='PRIMAL_SCHEME'):
         self.references = references
         self.ampliconLength = ampliconLength
         self.maxVariation = maxVariation
+        self.basesPer = basesPer
         self.minOverlap = minOverlap
         self.maxGap = maxGap
         self.stepSize = int((self.ampliconLength * self.maxVariation) - settings.global_args['PRIMER_MAX_SIZE'])
@@ -170,7 +171,7 @@ class poaMultiplexScheme(object):
             """
             #Print alignments (max 50 cols)
             align = MultipleSeqAlignment([*self.references])
-            region = _candidateRegion(args.basesPer, chunk_start, chunk_end)
+            region = _candidateRegion(self.basesPer, chunk_start, chunk_end)
 
             #Digest the references (except the consensus) into candidatePrimers
             allKmers = set()
@@ -215,12 +216,15 @@ class poaMultiplexScheme(object):
                 #print(region.regionPenalty)
 
                 #Get list of alts or None if failed to cover all references
+
                 leftAlts=[]
                 rightAlts=[]
+                """
                 if len(sortPairs[0].left.refCov) < len(self.references[:-2]):
                     leftAlts = sortPairs[0].fwdAlts(self.references[:-2], pairs)
                 if len(sortPairs[0].right.refCov) < len(self.references[:-2]):
                     rightAlts = sortPairs[0].revAlts(self.references[:-2], pairs)
+                """
 
                 #If there is a list of alts return (even if empty)
                 if not leftAlts == None and not rightAlts == None:
