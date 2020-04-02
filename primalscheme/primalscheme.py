@@ -28,8 +28,9 @@ import argparse
 import logging
 
 from Bio import SeqIO
-from Bio.Alphabet import AlphabetEncoder, _verify_alphabet, IUPAC
+from Bio.Alphabet import AlphabetEncoder, _verify_alphabet, IUPAC, generic_dna
 from Bio.Seq import Seq
+from Bio.Align import MultipleSeqAlignment
 from Bio.SeqRecord import SeqRecord
 
 from .multiplex_reporting import MultiplexReporter
@@ -65,7 +66,7 @@ def multiplex(args):
     Multipex scheme runner.
     """
 
-    references = process_fasta(args.fasta)
+    references, conservedness = process_msa(args.fasta)
 
     for record in references:
         logger.info('Reference: {}'.format(record.id))
@@ -77,6 +78,31 @@ def multiplex(args):
         max_variation=args.max_variation, prefix=args.prefix)
 
     scheme.write_all(args.output_path)
+
+def process_msa(file_path):
+    """
+    Parse the poapy file format
+    """
+
+    references = []
+    for line in open(file_path, 'r'):
+        cols = line.strip().split()
+        #TODO: Remove this bodge to remove gaps
+        references.append(SeqRecord(Seq(cols[1], generic_dna), id=cols[0], name='', description='')[10:])
+    align = MultipleSeqAlignment([*references])
+    cigar = ''
+    conservedness = [None] * align.get_alignment_length()
+    for i in range(align.get_alignment_length()):
+        count = len(set(align[:-1, i]))
+        conservedness[i] = count
+        if count == 1:
+            cigar += '*'
+        else:
+            cigar += ' '
+    cigar = SeqRecord(Seq(cigar), id='cigar')
+    references.append(cigar)
+
+    return references, conservedness
 
 
 def process_fasta(file_path):
