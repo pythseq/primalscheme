@@ -226,7 +226,6 @@ class MultiplexScheme(object):
         while True:
             # Slice primary reference
             seq = str(self.primary_reference.seq[chunk_start:chunk_end])
-            print(seq)
             p3_seq_args['SEQUENCE_TEMPLATE'] = seq
             p3_seq_args['SEQUENCE_INCLUDED_REGION'] = [0, len(seq) - 1]
             logger.debug("Region %i: reference chunk %i:%i, length %i" % (

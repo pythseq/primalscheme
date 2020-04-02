@@ -66,7 +66,7 @@ def multiplex(args):
     Multipex scheme runner.
     """
 
-    references, conservedness = process_msa(args.fasta)
+    references = process_msa(args.fasta)
 
     for record in references:
         logger.info('Reference: {}'.format(record.id))
@@ -83,26 +83,20 @@ def process_msa(file_path):
     """
     Parse the poapy file format
     """
-
+    alphabet = AlphabetEncoder(IUPAC.unambiguous_dna, 'N')
     references = []
     for line in open(file_path, 'r'):
         cols = line.strip().split()
-        #TODO: Remove this bodge to remove gaps
-        references.append(SeqRecord(Seq(cols[1], generic_dna), id=cols[0], name='', description='')[10:])
-    align = MultipleSeqAlignment([*references])
-    cigar = ''
-    conservedness = [None] * align.get_alignment_length()
-    for i in range(align.get_alignment_length()):
-        count = len(set(align[:-1, i]))
-        conservedness[i] = count
-        if count == 1:
-            cigar += '*'
-        else:
-            cigar += ' '
-    cigar = SeqRecord(Seq(cigar), id='cigar')
-    references.append(cigar)
+        if cols[0] == 'Consensus0':
+            nogaps = cols[1].replace('-', '').upper()
+            if (len(cols[1]) - len(nogaps)) / len(cols[1]) > 0.1:
+                raise ValueError(
+                    'Too much divergence between sequences maximum allowed is '
+                    '10% gaps'
+                )
+            references.append(SeqRecord(Seq(nogaps, alphabet), id=cols[0], description=cols[0]))
 
-    return references, conservedness
+    return references
 
 
 def process_fasta(file_path):
