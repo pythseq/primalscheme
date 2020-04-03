@@ -22,10 +22,12 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>
 """
 
-import sys
-import os
 import argparse
 import logging
+import os
+import subprocess
+import sys
+import tempfile
 
 from Bio import SeqIO
 from Bio.Alphabet import AlphabetEncoder, _verify_alphabet, IUPAC, generic_dna
@@ -66,70 +68,66 @@ def multiplex(args):
     Multipex scheme runner.
     """
 
-    references = process_msa(args.fasta)
+    user_references = parse_user_input_fasta(args.fasta)
 
-    for record in references:
+    for record in user_references:
         logger.info('Reference: {}'.format(record.id))
 
+    consensus_sequences = find_consensus_sequences(
+        user_references, args.output_path, args.prefix)
+
     scheme = MultiplexReporter(
-        references, args.amplicon_length, min_overlap=args.min_overlap,
+        consensus_sequences, args.amplicon_length, min_overlap=args.min_overlap,
         max_gap=args.max_gap, max_alts=args.max_alts,
         max_candidates=args.max_candidates, step_size=args.step_size,
         max_variation=args.max_variation, prefix=args.prefix)
 
     scheme.write_all(args.output_path)
 
-def process_msa(file_path):
+
+def find_consensus_sequences(user_references, output_path, prefix):
     """
-    Parse the poapy file format
+    remove gaps and make uppercase
     """
+
+    cleaned_poa_input = os.path.join(output_path, '{}.cleaned_poa_input.fasta'.format(prefix))
+    SeqIO.write(map(SeqRecord.lower, user_references), cleaned_poa_input, format='fasta')
+
+    basedir = '/Users/josh/bioinfo'
+    poa_cmd = [basedir + '/bin/poaV2/poa', '-read_fasta', cleaned_poa_input \
+    , basedir + '/bin/poaV2/blosum80.mat', '-do_global', \
+    '-hb', '-best', '-pir', '/dev/stdout']
+
+    poa_output = subprocess.run(poa_cmd, capture_output=True, check=True)
+
+    with tempfile.NamedTemporaryFile() as temp_file:
+        temp_file.write(poa_output.stdout)
+        records = list(
+            r.upper() for r in SeqIO.parse(temp_file.name, 'fasta'))
+
+    return records[len(user_references):]
+
+
+def parse_user_input_fasta(file_path):
+    """
+    Parse and validate the user multi-fasta file.
+    """
+
     alphabet = AlphabetEncoder(IUPAC.unambiguous_dna, 'N')
-    references = []
-    for line in open(file_path, 'r'):
-        cols = line.strip().split()
-        if cols[0] == 'Consensus0':
-            nogaps = cols[1].replace('-', '').upper()
-            if (len(cols[1]) - len(nogaps)) / len(cols[1]) > 0.1:
-                raise ValueError(
-                    'Too much divergence between sequences maximum allowed is '
-                    '10% gaps'
-                )
-            references.append(SeqRecord(Seq(nogaps, alphabet), id=cols[0], description=cols[0]))
-
-    return references
-
-
-def process_fasta(file_path):
-    """
-    Parse and validate the fasta file.
-    """
-
-    references = []
-    alphabet = AlphabetEncoder(IUPAC.unambiguous_dna, 'N')
-
-    records = SeqIO.parse(file_path, 'fasta')  # may raise
-
-    # Remove gaps, set alphabet
-    for record in records:
-        ref = SeqRecord(
-            Seq(str(record.seq).replace('-', '').upper(), alphabet),
-            id=record.id, description=record.id
-        )
-        references.append(ref)
+    references = list(SeqIO.parse(file_path, 'fasta', alphabet=alphabet))  # may raise
+    references.sort(key=len)
 
     # Check for too few or too many references
     if not (1 <= len(references) <= 100):
         raise ValueError('Between 1 and 100 reference genomes are required.')
 
-    # Check for max difference in length between references
-    primary_ref = references[0]
-    primary_ref_len = len(primary_ref)
-
-    if any(abs(len(r) - primary_ref_len) > 500 for r in references):
+    # Check that the shortest length is at least 0.9x the longest length
+    shortest = references[0]
+    longest = references[-1]
+    if len(shortest) < 0.9 * len(longest):
         raise ValueError(
-            'One or more of your references is too different in length to '
-            'the primary (first) reference. The maximum difference is '
-            '500 nt.'
+            'Your shortest reference must be at least 90% as long as your'
+            'longest reference.'
         )
 
     # Check for a valid alphabet
